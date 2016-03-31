@@ -5,27 +5,6 @@ namespace Releaser;
 /**
  * Class Releaser\Releaser
  *
- * todo: add command line support
- * todo: bug release body message incorrect (fixed?)
- * todo: bug composer.json escapes slashes (fixed?)
- * todo: bug composer.json version not updating dep versions
- * todo: pass github token to script
- * todo: option to replace latest master with latest/new release on unchanged repos
- * todo: realllllly improve github error response handling
- * todo: options: master cut, patch master, patch patch
- * todo: validate it works if dependency has not current release, sets 0.1.0
- * todo: implement type (major, minor, patch)
- * todo: implmenet source ref (release/branch/tag)
- * todo: option to release require-dev dependencies
- * todo: change $commonDepName to array of trigger names
- * todo: replace err and msg with proper 7 tier logger interface
- * todo: replace error with exceptions
- * todo: group OOP
- * todo: support range versioning, dynamic composer versions
- * todo: check if composer file sha is fine before file updates
- * todo support pre-releases
- * todo: fix composer sha after release, delete main release (leave dotX br), re-release
- *
  * @package Releaser
  */
 class Releaser
@@ -56,7 +35,7 @@ class Releaser
     private $type;
 
     /**
-     * @var string - sourc tag, branch, or release to base the new release of
+     * @var string - source tag, branch, or release to base the new release of
      */
     private $sourceRef;
 
@@ -402,9 +381,9 @@ class Releaser
         }
 
         $fileData    = $this->fileHolder[$this->currentRepo][$filename];
-        $FileContent = json_decode(base64_decode($fileData['content']), true);
-        if (isset($FileContent['require']) && !empty($FileContent['require'])) {
-            foreach ($FileContent['require'] as $depName => $depVersion) {
+        $fileContent = json_decode(base64_decode($fileData['content']), true);
+        if (isset($fileContent['require']) && !empty($fileContent['require'])) {
+            foreach ($fileContent['require'] as $depName => $depVersion) {
                 if (!array_key_exists($depName, $this->repoNamesComposerToGH)) {
                     continue;
                 }
@@ -413,12 +392,11 @@ class Releaser
                 if (in_array($depNameGH, $this->toBeReleased)) {
                     //todo: currently hardcoded to master
                     $changeDepVerTo                   = $this->repos[$depNameGH]['next_master'];
-                    $FileContent['require'][$depName] = $changeDepVerTo;
+                    $fileContent['require'][$depName] = $changeDepVerTo;
                     $this->msg("$this->currentRepo $filename changed dep $depName to $changeDepVerTo");
                 }
             }
-
-            $newContent = base64_encode(json_encode($FileContent, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $newContent = base64_encode(json_encode($fileContent, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
             $this->fileHolder[$this->currentRepo][$filename]['content_copy'] = $fileData['content'];
             $this->fileHolder[$this->currentRepo][$filename]['content']      = $newContent;
