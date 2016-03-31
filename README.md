@@ -14,7 +14,7 @@
 
 Releaser is an automated semantic release version manager for CLI and PHP applications
 
-It is intended to save time on release process for individuals and companies that maintain clusters of interconnected repositories and spend hours every month releasing them. Provide Releaser with your repository name in need of release, few configuration options, and it will release it alongside all of its dependencies that also have changed since latest release.
+It is intended to save time on release process for individuals and companies that maintain nodes of interconnected repositories and spend hours every month releasing them. Provide Releaser with your repository name in need of release, few configuration options, and it will release it alongside all of its dependencies that also have changed since latest release.
 
 
 ###Installation
