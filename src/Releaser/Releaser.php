@@ -2,13 +2,10 @@
 
 namespace Releaser;
 
-$releaser = new Releaser();
-$releaser->release('token', 'github_repo_owner', 'repo_to_release', 'for_most_same_as_owner', 'minor', 'master');
-
-
 /**
  * Class Releaser\Releaser
  *
+ * todo: add command line support
  * todo: bug release body message incorrect (fixed?)
  * todo: bug composer.json escapes slashes (fixed?)
  * todo: bug composer.json version not updating dep versions
