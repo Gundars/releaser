@@ -29,7 +29,8 @@ $releaser = new \Releaser\Releaser();
 $releaser->release($token, $owner, $repository, $commonDepName, $type, $sourceRef);
 ```
 
-Arguments:
+####Arguments:
+
 | First Header     | Req | Sample            | Description                                                 |
 |       :---:      |:---:|        :---:      | :---                                                        |
 | `$token`         |  *  |'a0bc9q42g3f4....' | Github API token                                            |
