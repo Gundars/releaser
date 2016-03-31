@@ -2,7 +2,16 @@
   "name": "gundars/releaser",
   "description": "Releaser is an automated semantic release version manager for CLI and PHP applications",
   "keywords": [
-    "release", "manager", "api", "semantic", "version", "versioning", "php", "composer", "github"],
+    "release",
+    "manager",
+    "api",
+    "semantic",
+    "version",
+    "versioning",
+    "php",
+    "composer",
+    "github"
+  ],
   "homepage": "https://github.com/Gundars/Releaser",
   "type": "library",
   "license": "MIT",
