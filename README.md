@@ -14,7 +14,7 @@
 
 Releaser is an automated semantic release version manager for CLI and PHP applications
 
-It is intended to save time on release process for individuals and companies that maintain nodes of interconnected repositories and spend hours every month releasing them. Provide Releaser with your repository name in need of release, few configuration options, and it will release it alongside all of its dependencies that also have changed since latest release.
+It is intended to save time on release process for individuals and companies that maintain nodes of interconnected repositories and spend hours every month releasing them. Provide Releaser with your repository name, few configuration options, and it will release it alongside all of its modified dependencies.
 
 
 ###Installation
@@ -36,7 +36,7 @@ $releaser->release($token, $owner, $repository, $commonDepName, $type, $sourceRe
 |       :---:      |:---:|        :---:      | :---                                                        |
 | `$token`         |  *  |'a0bc9q42g3f4....' | Github API token                                            |
 | `$owner`         |  *  |'github-account'   | Name of the github repo owner that is being released        |
-| `$repository`    |  *  | 'reponame'        | Name of the g-ithub repo owner that is being released       |
+| `$repository`    |  *  | 'reponame'        | Name of the github repository that is being released       |
 | `$commonDepName` |  *  | 'prefix'          | All dependencies without this in their name will be ignored |
 | `$type`          |  *  | 'major'           | Type of release (major, minor, patch)                       |
 | `$sourceRef`     |  *  | 'master'          | Source repository release base - tag, branch, or release    |
@@ -63,3 +63,4 @@ soon...
 * check if composer file sha is fine before file updates, get sha from branch where DotX is done, or DotX itself
 * support pre-releases
 * fix composer sha after release, delete main release (leave dotX br), re-release
+* DI

@@ -28,5 +28,13 @@
     "psr-4": {
       "Releaser\\": "src/Releaser/"
     }
+  },
+  "scripts": {
+    "post-install-cmd": [
+      "composer dumpautoload -o"
+    ],
+    "post-update-cmd": [
+      "composer dumpautoload -o"
+    ]
   }
 }

@@ -2,6 +2,11 @@
 
 namespace Releaser;
 
+use Releaser\Models\Repository;
+use Releaser\Models\Version;
+
+require __DIR__ . '/../../vendor/autoload.php';
+
 /**
  * Class Releaser\Releaser
  *
@@ -18,6 +23,16 @@ class Releaser
      * Github file encoding
      */
     const GITHUB_FILE_ENCODING = 'base64';
+
+    /**
+     * @var Version
+     */
+    private $version;
+
+    /**
+     * @var Repository
+     */
+    private $repository;
 
     /**
      * @var string - Github API token
@@ -44,11 +59,10 @@ class Releaser
      */
     private $commonDepName;
 
-
     /**
      * @var string - repository being released
      */
-    private $mainRepo;
+    private $mainRepoName;
 
     /**
      * @var array - holds info about all repos and their dependencies
@@ -90,8 +104,14 @@ class Releaser
      */
     private $repoVersionsGHToComposer;
 
+    public function __construct()
+    {
+        $this->version    = Version::newInstance(); //todo: DI
+        $this->repository = Repository::newInstance();
+    }
+
     /**
-     * Releaser lib constructor
+     * release repository and its dependencies
      *
      * @param string $token         Github API token
      * @param string $owner         Github owner name of repository to release
@@ -109,14 +129,25 @@ class Releaser
     {
         $this->githubApiToken = $token;
         $this->owner          = $owner;
-        $this->mainRepo       = $repository;
+        $this->mainRepoName   = $repository;
         $this->type           = $type;
         $this->sourceRef      = $sourceRef;
         $this->commonDepName  = $commonDepName;
 
-        $this->repos[$this->mainRepo]['source_refs'][] = $sourceRef;
+        $this->repos[$this->mainRepoName] = $this->repository
+            ->newInstance()
+            ->setName($this->mainRepoName)
+            ->addRequiredVersion($sourceRef);
+
         $this->scanAllDependencies();
-        $this->scanForMultipleDependencyVersions();
+
+
+
+
+
+
+
+
         $this->verifyWhatNeedsARelease();
         $this->sortReleasablesInReleaseOrder();
 
@@ -131,35 +162,13 @@ class Releaser
     private function scanAllDependencies()
     {
         do {
-            $newDeps = $this->getDependenciesForCurrentRepos();
+            $newDeps = 0;
+            foreach ($this->repos as $repository) {
+                $newDeps += $this->getDependenciesForCurrentRepos($repository);
+            }
         } while ($newDeps !== 0);
 
         return;
-    }
-
-    /**
-     *
-     */
-    private function scanForMultipleDependencyVersions()
-    {
-        $this->msg();
-        $this->msg("$this->mainRepo $this->sourceRef release depends on:");
-
-        $issues = [];
-        foreach ($this->repos as $repoName => $repoData) {
-            $versionArray = $repoData['source_refs'];
-            $versions     = implode(', ', $versionArray);
-            $this->msg("$repoName ($versions)");
-            if (count($versionArray) > 1) {
-                $issues[] = "$repoName ($versions)";
-            }
-        }
-
-        $this->msg();
-        if (!empty($issues)) {
-            $this->msg('Releaser cannot proceed due to multiple dependency versions');
-            $this->err("Aborting because of " . implode(' and ', $issues));
-        }
     }
 
     /**
@@ -221,55 +230,45 @@ class Releaser
     }
 
     /**
-     * @return int
+     * @param Repository $repository
+     * @return mixed
      */
-    private function getDependenciesForCurrentRepos()
+    private function getDependenciesForCurrentRepos(Repository $repository)
     {
         $newDependencies = 0;
-        // Get deps of all current repos
-        foreach ($this->repos as $repoName => $repoData) {
-            if (isset($repoData['dependencies'])) {
-                continue;
-            }
-            $composerJson = $this->getFileFromGithub($repoName, $repoData['source_refs'][0], 'composer.json');
-            $composerInfo = json_decode($composerJson, true);
 
-            if (!isset($composerInfo['require']) || empty($composerInfo['require'])) {
-                $this->msg("$repoName has no dependencies");
-                $this->repos[$repoName]['dependencies'] = false;
-                continue;
-            }
+        if ($repository->getDependencies() !== false) {
+            return $newDependencies;
+        }
+        $parentName = $repository->getName();
+        $composerJson = $this->getFileFromGithub($parentName, $repository->getRequiredVersions()[0], 'composer.json');
+        $composerInfo = json_decode($composerJson, true);
 
-            foreach ($composerInfo['require'] as $depCompName => $depCompVersion) {
-                // each dep that matches naming pattern
-                if (strpos($depCompName, $this->commonDepName) !== false) {
-                    // Add to github/composer naming array for later
-                    $depName                                         = $this->composerToGithubRepoName($depCompName);
-                    $depVersion                                      = $this->composerToGithubRepoVersion($depCompVersion);
-                    $this->repoNamesComposerToGH[$depCompName]       = $depName;
-                    $this->repoNamesGHToComposer[$depName]           = $depCompName;
-                    $this->repoVersionsComposerToGH[$depVersion]     = $depCompVersion;
-                    $this->repoVersionsGHToComposer[$depCompVersion] = $depVersion;
+        if (!isset($composerInfo['require']) || empty($composerInfo['require'])) {
+            $this->repos[$parentName]->setDependencies([]);
+            $this->msg("$parentName has no dependencies");
+            $this->repos[$parentName]['dependencies'] = false;
+            return $newDependencies;
+        }
 
-                    // Add to main repo dependencies
-                    $this->repos[$repoName]['dependencies'][$depName] = $depVersion;
+        foreach ($composerInfo['require'] as $depCompName => $depCompVersion) {
+            // each dep that matches naming pattern
+            if (strpos($depCompName, $this->commonDepName) !== false) {
+                $depName = $this->composerToGithubRepoName($depCompName);
+                $repository->addDependency($depName);
 
-                    // give dependency its own section
-                    if (!array_key_exists($depName, $this->repos)) {
-                        $this->repos[$depName] = [];
-                    }
+                if (isset($this->repos[$depName])) {
+                    $this->repos[$depName]->addRequiredVersion($depCompVersion, $parentName);
+                } else {
+                    $this->repos[$depName] = $this->repository
+                        ->newInstance()
+                        ->setName($depName)
+                        ->setComposerName($depCompName)
+                        ->addRequiredVersion($depCompVersion, $repository->getName());
+                }
 
-                    if (!array_key_exists('dependencies', $this->repos[$depName])) {
-                        $newDependencies++;
-                    }
-
-                    // add dep version to dep section in repos
-                    if (!array_key_exists('source_refs', $this->repos[$depName])) {
-                        $this->repos[$depName]['source_refs'] = [];
-                    }
-                    if (!in_array($depVersion, $this->repos[$depName]['source_refs'])) {
-                        $this->repos[$depName]['source_refs'][] = $depVersion;
-                    }
+                if ($this->repos[$depName]->getDependencies() === false) {
+                    $newDependencies++;
                 }
             }
         }
@@ -282,12 +281,24 @@ class Releaser
      */
     private function verifyWhatNeedsARelease()
     {
-        foreach (array_keys($this->repos) as $repo) {
-            $this->verifyIfRepoNeedsARelease($repo);
+        foreach ($this->repos as $repo) {
+            $repo->calculateLatestReleasedVerion();
+
+
+
+
+
+
+
+
+
+
+
+
+
+            $repo->needsRelease();
         }
 
-        $this->msg();
-        $this->msg("Additional releases due to dependency change:");
         $this->accountForAllDependenciesToBeReleased();
     }
 
@@ -315,7 +326,7 @@ class Releaser
                     ) {
                         $allAccountedFor      = false;
                         $this->toBeReleased[] = $repoName;
-                        if ($repoName === $this->mainRepo) {
+                        if ($repoName === $this->mainRepoName) {
                             $this->msg("$repoName needs a new release because it is the main repository");
                         } else {
                             $this->msg("$repoName needs a new release because $releasableRepoName is released");
@@ -324,18 +335,6 @@ class Releaser
                 }
             }
         } while ($allAccountedFor = false);
-    }
-
-    /**
-     * @param $repo
-     */
-    private function verifyIfRepoNeedsARelease($repo)
-    {
-        $this->currentRepo = $repo;
-        $releases          = $this->curlGetReleases();
-        $this->getLatestVersions($releases);
-        // todo find out if custom branch / tag needs a release! not just hardcode to current_master
-        $this->branchNeedsANewRelease($this->repos[$repo]['source_refs'][0], $this->repos[$repo]['current_master']);
     }
 
     /**
@@ -349,10 +348,10 @@ class Releaser
             $this->err("No repositories require a release! :)");
         }
 
-        $this->msg("New $this->mainRepo {$this->repos[$this->mainRepo]['next_master']} to be released, depending on " . ($count - 1) . " new:");
+        $this->msg("New $this->mainRepoName {$this->repos[$this->mainRepoName]['next_master']} to be released, depending on " . ($count - 1) . " new:");
         foreach ($this->toBeReleased as $repo) {
             //todo: this is hardcoded to master
-            if ($repo !== $this->mainRepo) {
+            if ($repo !== $this->mainRepoName) {
                 $this->msg('- ' . $this->repos[$repo]['next_master'] . ' ' . $repo);
             }
         }
@@ -459,77 +458,6 @@ class Releaser
         }
         fclose($handle);
         $this->msg("\nContinuing with release, press  Ctrl+C  to abort manually");
-    }
-
-    /**
-     * @param $releases
-     */
-    private function getLatestVersions($releases)
-    {
-        $tagsThreeLevels = [];
-        foreach ($releases as $release) {
-            $explodedTag = explode('.', $release->tag_name);
-
-            $first  = (int)$explodedTag[0];
-            $second = (int)$explodedTag[1];
-            $third  = (int)$explodedTag[2];
-            if (!array_key_exists($first, $tagsThreeLevels)) {
-                $tagsThreeLevels[$first] = [];
-            }
-            if (!array_key_exists($second, $tagsThreeLevels[$first])) {
-                $tagsThreeLevels[$first][$second] = [];
-            }
-            if (!array_key_exists($third, $tagsThreeLevels[$first][$second])) {
-                $tagsThreeLevels[$first][$second][] = $third;
-            }
-        }
-        $masterVMaxLevel1 = max(array_keys($tagsThreeLevels));
-        $masterVMaxLevel2 = max(array_keys($tagsThreeLevels[$masterVMaxLevel1]));
-        $masterVMaxLevel3 = max($tagsThreeLevels[$masterVMaxLevel1][$masterVMaxLevel2]);
-
-        $patchVMaxLevel3 = min($tagsThreeLevels[$masterVMaxLevel1][$masterVMaxLevel2]);
-
-        $this->repos[$this->currentRepo]['current_master'] = "$masterVMaxLevel1.$masterVMaxLevel2.$masterVMaxLevel3";
-        $this->repos[$this->currentRepo]['next_master']    = "$masterVMaxLevel1." . ($masterVMaxLevel2 + 1) . ".0";
-        $this->repos[$this->currentRepo]['current_patch']  = ($patchVMaxLevel3 > 0 ? "$masterVMaxLevel1.$masterVMaxLevel2.$patchVMaxLevel3" : null);
-        $this->repos[$this->currentRepo]['next_branch']    = "$masterVMaxLevel1." . ($masterVMaxLevel2 + 1) . ".x";
-
-        $this->msg(
-            "$this->currentRepo latest master release {$this->repos[$this->currentRepo]['current_master']}, "
-            . ($this->repos[$this->currentRepo]['current_patch'] ? 'patched with '
-                . $this->repos[$this->currentRepo]['current_patch'] : 'not patched')
-        );
-    }
-
-    /**
-     * @param $branch
-     * @param $releaseVersion
-     */
-    private function branchNeedsANewRelease($branch, $releaseVersion)
-    {
-        $comparison = $this->curlReleaseAndComparison($branch, $releaseVersion);
-        $this->msg(
-            "$this->currentRepo $branch branch VS $releaseVersion release - {$comparison->status}, ahead by {$comparison->ahead_by}, behind by {$comparison->behind_by} commits"
-        );
-
-        // Save stats
-        $this->repos[$this->currentRepo]['stats']['ahead'] = (int)$comparison->ahead_by;
-        if (!empty($comparison->files)) {
-            foreach ($comparison->files as $file) {
-                $this->repos[$this->currentRepo]['stats']['files'][] = "$file->status $file->filename -$file->deletions +$file->additions";
-            }
-        }
-        if (!empty($comparison->commits)) {
-            foreach ($comparison->commits as $commit) {
-                $this->repos[$this->currentRepo]['stats']['commit_messages'][] = $commit->commit->message;
-            }
-        }
-
-        // Does it need a release based on committed changes?
-        if (($comparison->ahead_by > 0)) {
-            $this->toBeReleased[] = $this->currentRepo;
-            $this->msg("$this->currentRepo needs new release ");
-        }
     }
 
     /**
@@ -645,17 +573,6 @@ class Releaser
         $path = "repos/$this->owner/$this->currentRepo/compare/$releaseVersion...$branch";
 
         return $this->executeCurlRequest($path);
-    }
-
-    /**
-     * @return mixed
-     */
-    private function curlGetReleases()
-    {
-        $path     = "repos/$this->owner/$this->currentRepo/releases";
-        $releases = $this->executeCurlRequest($path);
-
-        return $releases;
     }
 
     /**
