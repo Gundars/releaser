@@ -47,7 +47,7 @@ $releaser->release($repository, $commonDepName, $type, $sourceRef);
 | `$token`         |  *  |'a0bc9q42g3f4asd'  | Github API token                                            |
 | `$owner`         |  *  |'github-account'   | Name of the github repo owner that is being released        |
 | `$repository`    |  *  | 'reponame'        | Name of the github repository that is being released       |
-| `$commonDepName` |  *  | 'prefix'          | All dependencies without this in their name will be ignored |
+| `$commonDepName` |  *  | 'prefix'          | All dependencies without this in their name will be ignored, usually same as `$owner` |
 | `$type`          |  *  | 'major'           | Type of release (major, minor, patch)                       |
 | `$sourceRef`     |  *  | 'master'          | Source repository release base - tag, branch, or release    |
 
