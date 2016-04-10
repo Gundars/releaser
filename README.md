@@ -20,7 +20,7 @@ Provide Releaser with your repository name, and it will release it alongside all
 
 ###Basic Releaser flow:
 - gets data for main repo you want to release
-- finds all its of its dependencies
+- finds all of its dependencies
 - finds all dependency dependencies until all accounted for
 - figure out which repos changed since last release
 - release all modified dependencies in logical order
