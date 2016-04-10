@@ -2,19 +2,30 @@
 
 namespace Releaser\Models;
 
+use Composer\Semver\VersionParser;
+use Composer\Semver\Semver;
+use UnexpectedValueException;
+
 /**
  * Class Repository
  *
  * Responsible for all Github repository data and logic required for a release
  *
- * @package Releaser\Models
+ * @package Releaser\M`odels
  */
 class Repository
 {
+
+    private $githubApiClient;
+
+    private $versionParser;
+
+    private $semver;
+
     /**
      * @var string Github repo name
      */
-    private $name;
+    private $name = '';
 
     /**
      * @var string Composer full name of the repo
@@ -39,12 +50,33 @@ class Repository
      */
     private $needsRelease;
 
+    private $tags;
+
+    private $branches;
+
+    private $releases;
+
+    private $tagsReleasesBranches;
+
+    public $latestVersions = [];
+
+    public $stats = [];
+
     /**
-     * @return Repository
+     * @var array of all tags,branches and releases ordered by date desc
      */
-    public static function newInstance()
+    private $refs = [];
+
+
+    public function __construct($githubApiClient, $name)
     {
-        return new self();
+        $this->githubApiClient = $githubApiClient;
+        $this->versionParser   = new VersionParser();
+        $this->semver          = new Semver();
+
+        $this->setName($name);
+        $this->collectRefs();
+        $this->getLatestVersions();
     }
 
     /**
@@ -117,7 +149,7 @@ class Repository
     {
         $return = [];
         foreach ($this->requiredVersions as $requirees) {
-            $return = $return + $requirees;
+            $return += $requirees;
         }
 
         return $return;
@@ -162,113 +194,136 @@ class Repository
     public function calculateLatestRequiredVersion()
     {
         $versions = $this->getRequiredVersions();
-        $count = count($versions);
+        $count    = count($versions);
         if ($count <= 0) {//previous calculation must have had a bug
             die("ERROR: miscalc, " . $this->getName() . " 0 versions are required by others. Aborting!");
         } elseif ($count === 1) {//single version required :)
-            $latestRequiredVersion = $versions[0];
+            $latestRequiredVersion = $this->abstractVersionToGitRef($versions[0]);
         } else { // required multiple versions :(
-            $latestRequiredVersion = $this->findCommonComposerVersionFromMultiple();
+            $latestRequiredVersion = $this->multipleAbstractVersionsToGitRef($versions);
         }
 
         return $latestRequiredVersion;
     }
 
     /**
-     * todo:
-     * Scan type of required versions - tags, releases, branch names
-     * Get all refs - branches, tags, releases
-     * make an array for each of multiple versions ["version" => [], "version2" => []]
-     * add fitting refs in version arrays["version" => [tag1, tag2, tag3...]]
-     * find latest changed ref that fits all versions
+     * todo: just download the whole repo locally
      */
-    private function findCommonComposerVersionFromMultiple()
+    private function collectRefs()
     {
+        $name = ($this->getName()) ? $this->getName() : 'repository';
+        $this->msg("Downloading $name data through API");
 
+        $tagsAndReleases = [];
 
+        $tags = $this->githubApiClient->getTags($this->getName());
+        foreach ($tags as $tag) {
+            if ($this->isNormalisible($tag->name)) {
+                $this->tags[$tag->name] = $tag;
+                $tagsAndReleases[]      = $tag->name;
+            }
+        }
 
+        $releases = $this->githubApiClient->getReleases($this->getName());
+        foreach ($releases as $release) {
+            if ($this->isNormalisible($release->name)) {
+                $this->releases[$release->name] = $release;
+                $tagsAndReleases[]              = $release->name;
+            }
+        }
 
+        $branches = $this->githubApiClient->getBranches($this->getName());
+        foreach ($branches as $branch) {
+            $this->branches[$branch->name] = $branch;
+        }
 
-
-
-
-
-
-
-
+        $this->tagsReleasesBranches = $this->semver->rsort($tagsAndReleases);
+        $this->tagsReleasesBranches += array_keys($this->branches);
     }
 
+    private function isNormalisible($refName)
+    {
+        try {
+            $this->versionParser->normalize($refName);
+
+            return true;
+        } catch (UnexpectedValueException $e) {
+            // this shouldnt happen, means branches are in release list
+            return false;
+        }
+    }
 
     /**
      * @return bool|void
      */
-    public function needsRelease()
+    public function needsARelease()
     {
-        return (is_bool($this->needsRelease)) ? $this->needsRelease : $this->verifyRepositoryNeedsToBeReleased();
+        return (bool)(is_bool($this->needsRelease)) ? $this->needsRelease : $this->verifyRepositoryNeedsToBeReleased();
     }
 
-    private function verifyRepositoryNeedsToBeReleased()
+    /**
+     * todo:
+     * when receiving branch or major version - compare to latest version
+     * when receiving patch - version - compare to dotx branch
+     * @param string $refRelease
+     */
+    private function verifyRepositoryNeedsToBeReleased($refRelease = '')
     {
-
-
-
-
-
-
-
-        $this->getLatestVersions($releases);
         // todo find out if custom branch / tag needs a release! not just hardcode to current_master
-        $this->branchNeedsANewRelease($this->repos[$repo]['source_refs'][0], $this->repos[$repo]['current_master']);
-    }
-
-    private function getCurentReleases()
-    {
-       $this->curlGetReleases();
-
-
-
-
-        // save all releases
+        return $this->branchNeedsANewRelease($this->getRequiredVersions()[0], $this->latestVersions->current_master);
     }
 
     /**
      * @param $releases
      */
-    private function getLatestVersions($releases)
+    private function getLatestVersions()
     {
-        $tagsThreeLevels = [];
-        foreach ($releases as $release) {
-            $explodedTag = explode('.', $release->tag_name);
+        $this->latestVersions = new \stdClass();
 
-            $first  = (int)$explodedTag[0];
-            $second = (int)$explodedTag[1];
-            $third  = (int)$explodedTag[2];
-            if (!array_key_exists($first, $tagsThreeLevels)) {
-                $tagsThreeLevels[$first] = [];
-            }
-            if (!array_key_exists($second, $tagsThreeLevels[$first])) {
-                $tagsThreeLevels[$first][$second] = [];
-            }
-            if (!array_key_exists($third, $tagsThreeLevels[$first][$second])) {
-                $tagsThreeLevels[$first][$second][] = $third;
-            }
+        $latestVersion = $this->tagsReleasesBranches[0];
+
+        if (strpos($latestVersion, '.') === false) {
+            $m1 = 0;
+            $m2 = 1;
+            $m3 = 0;
+        } else {
+            $vSplit = explode('.', $latestVersion);
+            $m1     = $vSplit[0];
+            $m2     = isset($vSplit[1]) ? $vSplit[1] : 1;
+            $m3     = isset($vSplit[2]) ? $vSplit[2] : 0;
         }
-        $masterVMaxLevel1 = max(array_keys($tagsThreeLevels));
-        $masterVMaxLevel2 = max(array_keys($tagsThreeLevels[$masterVMaxLevel1]));
-        $masterVMaxLevel3 = max($tagsThreeLevels[$masterVMaxLevel1][$masterVMaxLevel2]);
 
-        $patchVMaxLevel3 = min($tagsThreeLevels[$masterVMaxLevel1][$masterVMaxLevel2]);
+        $p3 = $this->getLatestPatchVersion("$m1.$m2.");
 
-        $this->repos[$this->currentRepo]['current_master'] = "$masterVMaxLevel1.$masterVMaxLevel2.$masterVMaxLevel3";
-        $this->repos[$this->currentRepo]['next_master']    = "$masterVMaxLevel1." . ($masterVMaxLevel2 + 1) . ".0";
-        $this->repos[$this->currentRepo]['current_patch']  = ($patchVMaxLevel3 > 0 ? "$masterVMaxLevel1.$masterVMaxLevel2.$patchVMaxLevel3" : null);
-        $this->repos[$this->currentRepo]['next_branch']    = "$masterVMaxLevel1." . ($masterVMaxLevel2 + 1) . ".x";
+        $this->latestVersions->current_master = "$m1.$m2.$m3";
+        $this->latestVersions->current_major  = false;
+        $this->latestVersions->current_minor  = false;
+        $this->latestVersions->current_patch  = ($p3 > 0 ? "$m1.$m2.$p3" : null);
+        $this->latestVersions->next_branch    = "$m1." . ($m2 + 1) . ".x";
+        $this->latestVersions->next_master    = "$m1." . ($m2 + 1) . ".0";//todo remove
+        $this->latestVersions->next_major     = ($m1 + 1) . ".0.0";
+        $this->latestVersions->next_minor     = "$m1." . ($m2 + 1) . ".0";
+        $this->latestVersions->next_patch     = "$m1.$m2." . ($p3 + 1);
 
         $this->msg(
-            "$this->currentRepo latest master release {$this->repos[$this->currentRepo]['current_master']}, "
-            . ($this->repos[$this->currentRepo]['current_patch'] ? 'patched with '
-                . $this->repos[$this->currentRepo]['current_patch'] : 'not patched')
+            $this->getName() . " latest master release {$this->latestVersions->current_master}, "
+            . ($this->latestVersions->current_patch ? 'patched with '
+                . $this->latestVersions->current_patch : 'not patched')
         );
+    }
+
+    private function getLatestPatchVersion($releaseBeginning)
+    {
+        $patchVersions = [];
+        foreach ($this->tagsReleasesBranches as $releaseName) {
+            if ($releaseName !== $releaseBeginning . '0'
+                && substr($releaseName, 0, strlen($releaseBeginning)) === $releaseBeginning
+            ) {
+                $patchVersions[] = str_replace($releaseBeginning, '', $releaseName);
+            }
+        }
+
+        return (!empty($patchVersions)) ? (int)max($patchVersions) : 0;
     }
 
 
@@ -278,29 +333,31 @@ class Repository
      */
     private function branchNeedsANewRelease($branch, $releaseVersion)
     {
-        $comparison = $this->curlReleaseAndComparison($branch, $releaseVersion);
+        $comparison = $this->githubApiClient->curlRefAndReleaseComparison($this->getName(), $releaseVersion, $this->cToGVersion($branch));
         $this->msg(
-            "$this->currentRepo $branch branch VS $releaseVersion release - {$comparison->status}, ahead by {$comparison->ahead_by}, behind by {$comparison->behind_by} commits"
+            $this->getName() . " $branch branch VS $releaseVersion release - {$comparison->status}, ahead by {$comparison->ahead_by}, behind by {$comparison->behind_by} commits"
         );
 
         // Save stats
-        $this->repos[$this->currentRepo]['stats']['ahead'] = (int)$comparison->ahead_by;
+        $this->stats['ahead'] = (int)$comparison->ahead_by;
         if (!empty($comparison->files)) {
             foreach ($comparison->files as $file) {
-                $this->repos[$this->currentRepo]['stats']['files'][] = "$file->status $file->filename -$file->deletions +$file->additions";
+                $this->stats['files'][] = "$file->status $file->filename -$file->deletions +$file->additions";
             }
         }
         if (!empty($comparison->commits)) {
             foreach ($comparison->commits as $commit) {
-                $this->repos[$this->currentRepo]['stats']['commit_messages'][] = $commit->commit->message;
+                $this->stats['commit_messages'][] = $commit->commit->message;
             }
         }
 
         // Does it need a release based on committed changes?
         if (($comparison->ahead_by > 0)) {
-            $this->toBeReleased[] = $this->currentRepo;
-            $this->msg("$this->currentRepo needs new release ");
+            return true;
+            $this->msg($this->getName() . " needs new release ");
         }
+
+        return false;
     }
 
     /**
@@ -312,5 +369,165 @@ class Repository
         $releases = $this->executeCurlRequest($path);
 
         return $releases;
+    }
+
+    public function cToGVersion($version)
+    {
+        if (!$this->versionExistsInGit($version)) {
+            return $this->abstractVersionToGitRef($version);
+        }
+
+        return $version;
+    }
+
+    private function versionExistsInGit($version)
+    {
+        return in_array($version, $this->tagsReleasesBranches);
+    }
+
+    /**
+     * Works for single version getting, unprecise
+     * Might need to return all matching refs
+     * and common (multi) or latest (single) outside this func
+     *
+     * @param $composerVersion
+     * @return bool
+     */
+    private function abstractVersionToGitRef($composerVersion)
+    {
+        // if a valid branch name - return it
+        if (isset($this->branches[$composerVersion])) {
+            $gitRef = $composerVersion;
+        }
+
+        // if it starts with dev- and branch exists - remove dev
+        if (substr($composerVersion, 0, strlen('dev-')) === 'dev-') {
+            $gitRef = str_replace('dev-', '', $composerVersion);
+        }
+
+        // it ends with -dev - remove -dev
+        if (strpos($composerVersion, '-dev') !== false) {
+            $gitRef = str_replace('-dev', '', $composerVersion);
+        }
+
+        // if it has a . and * in it - find latest version starting with the val
+        // if it is just * - use latest release
+        // assuming list $tagsReleasesBranches is sorted with latest release desc
+        if (strpos($composerVersion, '*') !== false) {
+            if ($composerVersion === '*') {
+                $gitRef = $this->tagsReleasesBranches[0];
+            } elseif (strpos($composerVersion, '.') !== false) {
+                foreach ($this->tagsReleasesBranches as $tag) {
+                    $versNoStar = str_replace('*', '', $composerVersion);
+                    if (substr($tag, 0, strlen($versNoStar)) === $versNoStar) {
+                        $gitRef = $tag;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (isset($gitRef) && !empty($gitRef)) {
+            return $gitRef;
+        }
+
+        // could not match anything - see if composer semver can match
+        $matchingLatestVersion = $this->matchLatestViaSemver($composerVersion);
+        if ($matchingLatestVersion) {
+            return $matchingLatestVersion;
+        }
+
+        $this->msg('Releaser brain is shutting down:');
+        var_dump($this->tagsReleasesBranches);
+        $this->bye("Version $composerVersion does not exist in git");
+    }
+
+    private function matchLatestViaSemver($composerVersion)
+    {
+        $gitRef = false;
+        foreach ($this->tagsReleasesBranches as $ref) {
+            try {
+                $matching = $this->semver->satisfies($ref, $composerVersion);
+                if ($matching) {
+                    $gitRef = $ref;
+                    break;
+                }
+            } catch (UnexpectedValueException $e) {
+                continue;
+            }
+        }
+
+        return $gitRef;
+    }
+
+    private function matchAllVersionsViaSemver($composerVersion)
+    {
+        $matches = [];
+        foreach ($this->tagsReleasesBranches as $ref) {
+            $matching = $this->semver->satisfies($ref, $composerVersion);
+            if ($matching) {
+                $matches[] = $ref;
+                break;
+            }
+        }
+
+        return (!empty($matches)) ? $matches : false;
+    }
+
+    /**
+     * todo:
+     * Find single type of required versions - tags, releases, branch names
+     * Get all refs - branches, tags, releases
+     * make an array for each of multiple versions ["version" => [], "version2" => []]
+     * add fitting refs in version arrays["version" => [tag1, tag2, tag3...]]
+     * find latest changed ref that fits all versions
+     */
+    private function multipleAbstractVersionsToGitRef($versions)
+    {
+
+        //should  construct array of ALL matching versions
+        // and get latest ref in all deps
+        var_dump($this->getName());
+        var_dump($versions);
+        die('NOT IMPLEMENTED!');
+    }
+
+    /**
+     * @param string $message
+     */
+    private function msg($message = '')
+    {
+        echo "$message \n";
+    }
+
+    /**
+     * @param string $message
+     */
+    private function err($message)
+    {
+        echo "Error: $message \nABORTING!";
+        exit;
+    }
+
+    private function bye($message)
+    {
+        echo "Error: $message \nABORTING!";
+
+        $e     = new \Exception();
+        $trace = explode("\n", $e->getTraceAsString());
+        // reverse array to make steps line up chronologically
+        $trace = array_reverse($trace);
+        array_shift($trace); // remove {main}
+        array_pop($trace); // remove call to this method
+        $length = count($trace);
+        $result = [];
+
+        for ($i = 0; $i < $length; $i++) {
+            $result[] = ($i + 1) . ')' . substr($trace[$i], strpos($trace[$i], ' ')); // replace '#someNum' with '$i)', set the right ordering
+        }
+
+        echo "\t" . implode("\n\t", $result);
+
+        die;
     }
 }

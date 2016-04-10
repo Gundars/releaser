@@ -14,7 +14,17 @@
 
 Releaser is an automated semantic release version manager for CLI and PHP applications
 
-It is intended to save time on release process for individuals and companies that maintain nodes of interconnected repositories and spend hours every month releasing them. Provide Releaser with your repository name, few configuration options, and it will release it alongside all of its modified dependencies.
+It is intended to save time on individuals and companies  - release all your repositories in a minute!
+
+Provide Releaser with your repository name, and it will release it alongside all of its modified dependencies.
+
+###Basic Releaser flow:
+- gets data for main repo you want to release
+- finds all its of its dependencies
+- finds all dependency dependencies until all accounted for
+- figure out which repos changed since last release
+- release all modified dependencies in logical order
+- release main repo
 
 
 ###Installation
@@ -26,15 +36,15 @@ composer require gundars/releaser 0.*
 
 ###Releasing a repository via PHP
 ```php
-$releaser = new \Releaser\Releaser();
-$releaser->release($token, $owner, $repository, $commonDepName, $type, $sourceRef);
+$releaser = new \Releaser\Releaser('$token', '$owner');
+$releaser->release($repository, $commonDepName, $type, $sourceRef);
 ```
 
 ####Arguments:
 
 | First Header     | Req | Sample            | Description                                                 |
 |       :---:      |:---:|        :---:      | :---                                                        |
-| `$token`         |  *  |'a0bc9q42g3f4....' | Github API token                                            |
+| `$token`         |  *  |'a0bc9q42g3f4asd'  | Github API token                                            |
 | `$owner`         |  *  |'github-account'   | Name of the github repo owner that is being released        |
 | `$repository`    |  *  | 'reponame'        | Name of the github repository that is being released       |
 | `$commonDepName` |  *  | 'prefix'          | All dependencies without this in their name will be ignored |
@@ -43,24 +53,22 @@ $releaser->release($token, $owner, $repository, $commonDepName, $type, $sourceRe
 
 ###Releasing a repository via CLI
 ```php
-soon...
+Execute `php sample/release.php` making sure parameters are defined in sample/release.php
+Proper interface coming soon
 ```
-###Currently known issues, unimplemented features
+
+###Currently known issues, unimplemented features, garbage
 * add command line support
 * options: master cut, patch master, patch patch
 * validate it works if dependency has not current release, sets 0.1.0
 * implement type (major, minor, patch)
 * option to force release even unchanged repos for stability
-* reallly improve github error response handling
-* implmenet source ref (release/branch/tag)
 * option to release require-dev dependencies
 * change $commonDepName to array of trigger names
-* make $commonDepName optional
 * replace err and msg with proper 7 tier logger interface
 * replace internal errors with exceptions
-* group OOP for Gods sake
-* support range versioning, dynamic composer versions
+* finish grouping OOP for Gods sake
 * check if composer file sha is fine before file updates, get sha from branch where DotX is done, or DotX itself
 * support pre-releases
 * fix composer sha after release, delete main release (leave dotX br), re-release
-* DI
+* DI needs fixing ASAP

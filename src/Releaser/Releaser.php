@@ -4,6 +4,7 @@ namespace Releaser;
 
 use Releaser\Models\Repository;
 use Releaser\Models\Version;
+use Releaser\Models\GithubAPIClient;
 
 require __DIR__ . '/../../vendor/autoload.php';
 
@@ -14,15 +15,6 @@ require __DIR__ . '/../../vendor/autoload.php';
  */
 class Releaser
 {
-    /**
-     * Github API root
-     */
-    const GITHUB_ROOT = 'https://api.github.com/';
-
-    /**
-     * Github file encoding
-     */
-    const GITHUB_FILE_ENCODING = 'base64';
 
     /**
      * @var Version
@@ -33,6 +25,11 @@ class Releaser
      * @var Repository
      */
     private $repository;
+
+    /**
+     * @var GithubAPIClient
+     */
+    private $githubApiCLient;
 
     /**
      * @var string - Github API token
@@ -72,7 +69,7 @@ class Releaser
     /**
      * @var array - repositories requiring a release for main repo to be released
      */
-    private $toBeReleased;
+    private $toBeReleased = [];
 
     /**
      * @var string - lazy global state of current repo
@@ -104,17 +101,22 @@ class Releaser
      */
     private $repoVersionsGHToComposer;
 
-    public function __construct()
+    /**
+     * Releaser constructor.
+     * @param string $token Github API token
+     * @param string $owner Github owner name of repository to release
+     *
+     */
+    public function __construct($token, $owner)
     {
-        $this->version    = Version::newInstance(); //todo: DI
-        $this->repository = Repository::newInstance();
+        $this->owner = $owner;
+
+        $this->githubApiCLient = new GithubAPIClient($token, $owner);
     }
 
     /**
      * release repository and its dependencies
      *
-     * @param string $token         Github API token
-     * @param string $owner         Github owner name of repository to release
      * @param string $repository    Repository to release
      * @param string $commonDepName All dependencies with this somewhere in their name will be released, can be same as repo name
      * @param string $type          major, minor, patch. See below
@@ -125,29 +127,17 @@ class Releaser
      *        patch:         create or reuse 1.1.x branch -> do 1.1.1 release
      *
      */
-    public function release($token, $owner, $repository, $commonDepName, $type = 'minor', $sourceRef = 'master')
+    public function release($repository, $commonDepName, $type = 'minor', $sourceRef = 'master')
     {
-        $this->githubApiToken = $token;
-        $this->owner          = $owner;
-        $this->mainRepoName   = $repository;
-        $this->type           = $type;
-        $this->sourceRef      = $sourceRef;
-        $this->commonDepName  = $commonDepName;
+        $this->mainRepoName  = $repository;
+        $this->type          = $type;
+        $this->sourceRef     = $sourceRef;
+        $this->commonDepName = $commonDepName;
 
-        $this->repos[$this->mainRepoName] = $this->repository
-            ->newInstance()
-            ->setName($this->mainRepoName)
-            ->addRequiredVersion($sourceRef);
+        $this->repos[$this->mainRepoName] = new Repository($this->githubApiCLient, $this->mainRepoName);
+        $this->repos[$this->mainRepoName]->addRequiredVersion($sourceRef);
 
         $this->scanAllDependencies();
-
-
-
-
-
-
-
-
         $this->verifyWhatNeedsARelease();
         $this->sortReleasablesInReleaseOrder();
 
@@ -181,29 +171,27 @@ class Releaser
 
         $level = 1;
         do {
-            foreach ($toRelease as $repo) {
-                if (isset($this->repos[$repo]['dependencies'])
-                    && !empty($this->repos[$repo]['dependencies'])
-                ) {
+            foreach ($toRelease as $repoName) {
+                $repoDependencies = $this->repos[$repoName]->getDependencies();
+                if (isset($repoDependencies) && !empty($repoDependencies)) {
                     // only account for deps that are required for release
-                    $reposReleasableDependencies = array_keys($this->repos[$repo]['dependencies']);
-                    foreach ($reposReleasableDependencies as $dep) {
+                    foreach ($repoDependencies as $dep) {
                         if (!in_array($dep, $toRelease)) {
-                            $reposReleasableDependencies = $this->removeValueFromArray($dep, $reposReleasableDependencies);
+                            $repoDependencies = $this->removeValueFromArray($dep, $repoDependencies);
                         }
                     }
                 } else {
-                    $reposReleasableDependencies = [];
+                    $repoDependencies = [];
                 }
 
                 // #1 the ones who have no dependencies
-                if (empty($reposReleasableDependencies)) {
-                    $releaseOrder[] = $repo;
-                    $toRelease      = $this->removeValueFromArray($repo, $toRelease);
+                if (empty($repoDependencies)) {
+                    $releaseOrder[] = $repoName;
+                    $toRelease      = $this->removeValueFromArray($repoName, $toRelease);
                     continue;
                 } else {
                     $allDependenciesOrdered = true;
-                    foreach ($reposReleasableDependencies as $dep) {
+                    foreach ($repoDependencies as $dep) {
                         // if a dep is not ordered yet - break out
                         if (!in_array($dep, $releaseOrder)) {
                             $allDependenciesOrdered = false;
@@ -211,8 +199,8 @@ class Releaser
                         }
                     }
                     if ($allDependenciesOrdered) {
-                        $releaseOrder[] = $repo;
-                        $toRelease      = $this->removeValueFromArray($repo, $toRelease);
+                        $releaseOrder[] = $repoName;
+                        $toRelease      = $this->removeValueFromArray($repoName, $toRelease);
                     }
                 }
             }
@@ -240,14 +228,17 @@ class Releaser
         if ($repository->getDependencies() !== false) {
             return $newDependencies;
         }
-        $parentName = $repository->getName();
-        $composerJson = $this->getFileFromGithub($parentName, $repository->getRequiredVersions()[0], 'composer.json');
+        $parentName     = $repository->getName();
+        $githubVersion  = $repository->calculateLatestRequiredVersion();
+        $versionRefName = $repository->cToGVersion($githubVersion);
+
+        $composerJson = $this->getFileFromGithub($parentName, $versionRefName, 'composer.json');
         $composerInfo = json_decode($composerJson, true);
 
         if (!isset($composerInfo['require']) || empty($composerInfo['require'])) {
             $this->repos[$parentName]->setDependencies([]);
             $this->msg("$parentName has no dependencies");
-            $this->repos[$parentName]['dependencies'] = false;
+
             return $newDependencies;
         }
 
@@ -260,10 +251,8 @@ class Releaser
                 if (isset($this->repos[$depName])) {
                     $this->repos[$depName]->addRequiredVersion($depCompVersion, $parentName);
                 } else {
-                    $this->repos[$depName] = $this->repository
-                        ->newInstance()
-                        ->setName($depName)
-                        ->setComposerName($depCompName)
+                    $this->repos[$depName] = new Repository($this->githubApiCLient, $depName);
+                    $this->repos[$depName]->setComposerName($depCompName)
                         ->addRequiredVersion($depCompVersion, $repository->getName());
                 }
 
@@ -282,21 +271,11 @@ class Releaser
     private function verifyWhatNeedsARelease()
     {
         foreach ($this->repos as $repo) {
-            $repo->calculateLatestReleasedVerion();
+            $repo->calculateLatestRequiredVersion();
 
-
-
-
-
-
-
-
-
-
-
-
-
-            $repo->needsRelease();
+            if ($repo->needsARelease()) {
+                $this->toBeReleased[] = $repo->getName();
+            }
         }
 
         $this->accountForAllDependenciesToBeReleased();
@@ -316,12 +295,12 @@ class Releaser
             // each repo requiring a release
             foreach ($this->toBeReleased as $releasableRepoName) {
                 // all repositories not added to release yet
-                foreach ($this->repos as $repoName => $repoData) {
-                    if (!isset($repoData['dependencies']) || in_array($repoName, $this->toBeReleased)) {
+                foreach ($this->repos as $repoName => $repo) {
+                    if (empty($repo->getDependencies()) || in_array($repoName, $this->toBeReleased)) {
                         continue;
                     }
 
-                    if (in_array($releasableRepoName, array_keys($repoData['dependencies']))
+                    if (in_array($releasableRepoName, $repo->getDependencies())
                         && !in_array($repoName, $this->toBeReleased)
                     ) {
                         $allAccountedFor      = false;
@@ -348,22 +327,20 @@ class Releaser
             $this->err("No repositories require a release! :)");
         }
 
-        $this->msg("New $this->mainRepoName {$this->repos[$this->mainRepoName]['next_master']} to be released, depending on " . ($count - 1) . " new:");
+        $this->msg("New $this->mainRepoName {$this->repos[$this->mainRepoName]->latestVersions->next_master} to be released, depending on " . ($count - 1) . " new:");
         foreach ($this->toBeReleased as $repo) {
-            //todo: this is hardcoded to master
             if ($repo !== $this->mainRepoName) {
-                $this->msg('- ' . $this->repos[$repo]['next_master'] . ' ' . $repo);
+                $this->msg('- ' . $this->repos[$repo]->latestVersions->next_master . ' ' . $repo);
             }
         }
 
         $this->promptUserWhetherToProceed();
 
         foreach ($this->toBeReleased as $repo) {
-            $this->currentRepo = $repo;
-            $this->createDotXBranch();
-            $this->addNewDepsToDotXComposerFile();
-            $this->pushDotXComposerFile();
-            $this->releaseDotXBranch();
+            $this->createDotXBranch($repo);
+            $this->addNewDepsToDotXComposerFile($repo);
+            $this->pushDotXComposerFile($repo);
+            $this->releaseDotXBranch($repo);
         }
     }
 
@@ -371,28 +348,28 @@ class Releaser
      * @param string $filename
      * @return bool
      */
-    private function addNewDepsToDotXComposerFile($filename = 'composer.json')
+    private function addNewDepsToDotXComposerFile(Repository $repo, $filename = 'composer.json')
     {
-        if (!isset($this->fileHolder[$this->currentRepo][$filename]['content'])) {
-            $this->msg("Warning, $this->currentRepo does not seem to contain a $filename file");
+        $repoName = $repo->getName();
+        if (!isset($this->fileHolder[$repoName][$filename]['content'])) {
+            $this->msg("Warning, $repoName does not seem to contain a $filename file");
 
             return false;
         }
 
-        $fileData    = $this->fileHolder[$this->currentRepo][$filename];
+        $fileData    = $this->fileHolder[$repoName][$filename];
         $fileContent = json_decode(base64_decode($fileData['content']), true);
         if (isset($fileContent['require']) && !empty($fileContent['require'])) {
             foreach ($fileContent['require'] as $depName => $depVersion) {
-                if (!array_key_exists($depName, $this->repoNamesComposerToGH)) {
+                $depGName = $this->composerToGithubRepoName($depName);
+                if (!array_key_exists($depGName, $this->repos)) {
                     continue;
                 }
-                $depNameGH = $this->repoNamesComposerToGH[$depName];
-
-                if (in_array($depNameGH, $this->toBeReleased)) {
+                if (in_array($depGName, $this->toBeReleased)) {
                     //todo: currently hardcoded to master
-                    $changeDepVerTo                   = $this->repos[$depNameGH]['next_master'];
+                    $changeDepVerTo                   = $this->repos[$depGName]->latestVersions->next_master;
                     $fileContent['require'][$depName] = $changeDepVerTo;
-                    $this->msg("$this->currentRepo $filename changed dep $depName to $changeDepVerTo");
+                    $this->msg($repo->getName() . " $filename changed dep $depName to $changeDepVerTo");
                 }
             }
             $newContent = base64_encode(json_encode($fileContent, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -405,18 +382,17 @@ class Releaser
     /**
      * @param string $filename
      */
-    private function pushDotXComposerFile($filename = 'composer.json')
+    private function pushDotXComposerFile(Repository $repo, $filename = 'composer.json')
     {
-        $path = "repos/$this->owner/$this->currentRepo/contents/$filename";
-
+        $repoName    = $repo->getName();
         $releaseData = [
             'message' => 'Releaser changed composer.json dependencies',
-            'content' => $this->fileHolder[$this->currentRepo][$filename]['content'],
-            'sha'     => $this->fileHolder[$this->currentRepo][$filename]['sha'],
-            'branch'  => $this->repos[$this->currentRepo]['next_branch']
+            'content' => $this->fileHolder[$repoName][$filename]['content'],
+            'sha'     => $this->fileHolder[$repoName][$filename]['sha'],
+            'branch'  => $this->repos[$repoName]->latestVersions->next_branch
         ];
 
-        $result = $this->executeCurlRequest($path, 'PUT', $releaseData);
+        $result = $this->githubApiCLient->updateFile($repoName, $filename, $releaseData);
 
         if (isset($result->content, $result->commit)) {
             return true;
@@ -429,9 +405,9 @@ class Releaser
     /**
      *
      */
-    private function createDotXBranch()
+    private function createDotXBranch(Repository $repo)
     {
-        $ref = $this->getSourceRefHead();
+        $ref = $this->getSourceRefHead($repo->getName());
         if (isset($ref->object->sha)) {
             $sha = $ref->object->sha;
         } else {
@@ -439,7 +415,9 @@ class Releaser
             $this->err("Failed to obtain stable branch last commit sha hash");
         }
 
-        $this->createDotXRef($sha);
+        $newRef = $repo->latestVersions->next_branch;
+
+        $this->createDotXRef($repo->getName(), $newRef, $sha);
     }
 
     /**
@@ -466,18 +444,11 @@ class Releaser
      * @param $filePath
      * @return string
      */
-    private function getFileFromGithub($repository, $sourceRef, $filePath)
+    private function getFileFromGithub($repoName, $sourceRef, $filePath)
     {
-        $data = ['ref' => $sourceRef];
-        $path = "repos/$this->owner/$repository/contents/$filePath";
+        $response = $this->githubApiCLient->getFile($repoName, $sourceRef, $filePath);
 
-        $response = $this->executeCurlRequest($path, 'GET', $data);
-
-        if ($response->size <= 0 || $response->type !== 'file' || $response->encoding !== static::GITHUB_FILE_ENCODING) {
-            $this->err("File is either empty or a diractory.");
-        }
-
-        $this->fileHolder[$repository][$filePath] = [
+        $this->fileHolder[$repoName][$filePath] = [
             'sha'     => $response->sha,
             'content' => $response->content,
             'ref'     => $sourceRef
@@ -490,63 +461,38 @@ class Releaser
      * @param $sha
      * @return bool
      */
-    private function createDotXRef($sha)
+    private function createDotXRef($repoName, $newRef, $sha)
     {
-        $path     = 'repos/' . $this->owner . '/' . $this->currentRepo . '/git/refs';
-        $newRef   = $this->repos[$this->currentRepo]['next_branch'];
-        $postData = [
-            'ref' => 'refs/heads/' . $newRef,
-            'sha' => $sha
-        ];
-        $result   = $this->executeCurlRequest($path, 'POST', $postData);
-
-        if ($result === true || (isset($result->ref) && $result->ref === $postData['ref'])) {
-            $this->msg("Branch $newRef created for $this->currentRepo");
-
-            return true;
-        }
-
-        var_dump($result);
-        $this->err("Failed to create new ref. Aborting");
+        return $this->githubApiCLient->createRef($repoName, $newRef, $sha);
     }
 
     /**
      * @return bool
      */
-    private function releaseDotXBranch()
+    private function releaseDotXBranch(Repository $repo)
     {
-        $path = 'repos/' . $this->owner . '/' . $this->currentRepo . '/releases';
-        // todo: hardcoded to master
-        $repoData   = $this->repos[$this->currentRepo];
-        $dotXBranch = $repoData['next_branch'];
-        $newTag     = $repoData['next_master'];
-        $stats      = $repoData['stats'];
+        $repoName   = $repo->getName();
+        $dotXBranch = $repo->latestVersions->next_branch;
+        $newTag     = $repo->latestVersions->next_master;
+        $stats      = $repo->stats;
 
         $body = "`$newTag from $dotXBranch branch with {$stats['ahead']} commits`"
+            . "\n\n[Releaser] (https://github.com/Gundars/releaser) @ " . date("l, M j Y G:i")
             . "\n\n### File changes:"
             . implode('', $this->prependToEach("\n* ", $stats['files']))
             . "\n\n### Commits:"
-            . implode('', $this->prependToEach("\n* ", $stats['commit_messages']))
-            . "\n\n[by Releaser] (https://packagist.org/packages/gundars/releaser) @ " . date("D M d, Y G:i a");
+            . implode('', $this->prependToEach("\n* ", $stats['commit_messages']));
 
         $releaseData = [
             'tag_name'         => $newTag,
-            'target_commitish' => $this->repos[$this->currentRepo]['next_branch'],
+            'target_commitish' => $dotXBranch,
             'name'             => $newTag,
             'body'             => $body,
             'draft'            => false,
             'prerelease'       => false
         ];
 
-        $result = $this->executeCurlRequest($path, 'POST', $releaseData);
-        if (isset($result->tag_name) && $result->tag_name === $releaseData['tag_name']) {
-            $this->msg("Released $this->currentRepo $newTag");
-
-            return true;
-        }
-
-        var_dump($result);
-        $this->err("Failed to release $this->currentRepo. Aborting");
+        return $this->githubApiCLient->releaseBranch($repo->getName(), $releaseData);
     }
 
     /**
@@ -561,94 +507,6 @@ class Releaser
         }
 
         return $array;
-    }
-
-    /**
-     * @param $branch
-     * @param $releaseVersion
-     * @return mixed
-     */
-    private function curlReleaseAndComparison($branch, $releaseVersion)
-    {
-        $path = "repos/$this->owner/$this->currentRepo/compare/$releaseVersion...$branch";
-
-        return $this->executeCurlRequest($path);
-    }
-
-    /**
-     * @return mixed
-     */
-    private function getSourceRefHead()
-    {
-        $path = "repos/$this->owner/$this->currentRepo/git/refs/heads/master";
-        $ref  = $this->executeCurlRequest($path);
-
-        return $ref;
-    }
-
-    /**
-     * @param string $urlPath
-     * @param string $requestType
-     * @param array  $requestData
-     * @return mixed
-     */
-    private function executeCurlRequest($urlPath, $requestType = 'GET', $requestData = [])
-    {
-        $getParams = [
-            'access_token' => $this->githubApiToken
-        ];
-        if ($requestType === 'GET' && !empty($requestData)) {
-            $getParams = $getParams + $requestData;
-        }
-
-        $url     = static::GITHUB_ROOT . $urlPath . '?' . http_build_query($getParams);
-        $ch      = curl_init();
-        $options = [
-            CURLOPT_URL            => $url,
-            CURLOPT_RETURNTRANSFER => 1,
-            CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.8.1.13) Gecko/20080311 Firefox/2.0.0.13'
-        ];
-        if (!in_array($requestType, ['GET', 'POST'])) {
-            $options[CURLOPT_CUSTOMREQUEST] = $requestType;
-        }
-        if (in_array($requestType, ['POST', 'PUT']) && !empty($requestData)) {
-            $options[CURLOPT_POSTFIELDS] = json_encode($requestData);
-        }
-        curl_setopt_array($ch, $options);
-
-        $result = @json_decode(curl_exec($ch));
-
-        if (isset($result->message)) {
-            return $this->parseGithubApiResultMessage($result->message, $url, $options);
-        }
-
-        return $result;
-    }
-
-    /**
-     * @param $message
-     * @param $url
-     * @param $curlOptions
-     * @return bool
-     */
-    private function parseGithubApiResultMessage($message, $url, $curlOptions)
-    {
-        if ($this->githubApiToken == '') {
-            $this->err('Constant GITHUB_TOKEN is empty');
-        }
-
-        if (strpos($message, 'already exists') !== false) {
-            return true;
-        } elseif (strpos($message, 'composer.json does not match')) {
-            var_dump($curlOptions);
-            $this->err("Issues with composer.json sha. Deleting .X branch and retry");
-        } else {
-            var_dump($curlOptions);
-            $this->msg("Failed to retrieve $url");
-            $this->err("$message");
-        }
-
-        return false;
     }
 
     /**
@@ -682,19 +540,6 @@ class Releaser
     }
 
     /**
-     * @param $version
-     * @return mixed
-     */
-    private function composerToGithubRepoVersion($version)
-    {
-        if (is_string($version) && strpos($version, 'dev-') !== false) {
-            $version = str_replace('dev-', '', $version);
-        }
-
-        return $version;
-    }
-
-    /**
      * @param string $value
      * @param array  $array
      * @return array
@@ -706,5 +551,10 @@ class Releaser
         }
 
         return $array;
+    }
+
+    private function getSourceRefHead($repoName)
+    {
+        return $this->githubApiCLient->getSourceRefHead($repoName);
     }
 }
