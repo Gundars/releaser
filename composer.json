@@ -1,41 +1,41 @@
 {
-  "name": "gundars/releaser",
-  "description": "Releaser is an automated semantic release version manager for CLI and PHP applications",
-  "keywords": [
-    "release",
-    "manager",
-    "api",
-    "semantic",
-    "version",
-    "versioning",
-    "php",
-    "composer",
-    "github"
-  ],
-  "homepage": "https://github.com/Gundars/Releaser",
-  "type": "library",
-  "license": "MIT",
-  "authors": [
-    {
-      "name": "Gundars Mēness",
-      "email": "me@gundars.me"
-    }
-  ],
-  "require": {
-    "php": ">=5.4",
-    "composer/semver": "^1.4"
-  },
-  "autoload": {
-    "psr-4": {
-      "Releaser\\": "src/Releaser/"
-    }
-  },
-  "scripts": {
-    "post-install-cmd": [
-      "composer dumpautoload -o"
+    "name": "gundars/releaser",
+    "description": "Releaser is an automated semantic release version manager for CLI and PHP applications",
+    "keywords": [
+        "release",
+        "manager",
+        "api",
+        "semantic",
+        "version",
+        "versioning",
+        "php",
+        "composer",
+        "github"
     ],
-    "post-update-cmd": [
-      "composer dumpautoload -o"
-    ]
-  }
+    "homepage": "https://github.com/Gundars/Releaser",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Gundars M\u0113ness",
+            "email": "me@gundars.me"
+        }
+    ],
+    "require": {
+        "php": ">=5.4",
+        "composer/semver": "^1.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "Releaser\\": "src/Releaser/"
+        }
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "composer dumpautoload -o"
+        ],
+        "post-update-cmd": [
+            "composer dumpautoload -o"
+        ]
+    }
 }
