@@ -185,8 +185,10 @@ class GithubAPIClient
             } elseif (strlen($line) === 0) {
                 continue;
             } else {
-                list ($key, $value) = explode(': ', $line);
-                $headers[$key] = $value;
+                if (strpos($line, ': ') !== false) {
+                    list ($key, $value) = explode(': ', $line);
+                    $headers[$key] = $value;
+                }
             }
 
         return $headers;
@@ -240,7 +242,7 @@ class GithubAPIClient
         $result = [];
 
         for ($i = 0; $i < $length; $i++) {
-            $result[] = ($i + 1) . ')' . substr($trace[$i], strpos($trace[$i], ' ')); // replace '#someNum' with '$i)', set the right ordering
+            $result[] = ($i + 1) . ')' . substr($trace[$i], strpos($trace[$i], ' '));
         }
 
         echo "\t" . implode("\n\t", $result);

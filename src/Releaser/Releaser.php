@@ -72,11 +72,6 @@ class Releaser
     private $toBeReleased = [];
 
     /**
-     * @var string - lazy global state of current repo
-     */
-    private $currentRepo;
-
-    /**
      * @var array - holds (composer.json etc) files for each repo
      */
     private $fileHolder;
@@ -324,7 +319,8 @@ class Releaser
         $count = count($this->toBeReleased);
         $this->msg("\n");
         if ($count === 0) {
-            $this->err("No repositories require a release! :)");
+            $this->msg("No repositories require a release! :)");
+            die;
         }
 
         $this->msg("New $this->mainRepoName {$this->repos[$this->mainRepoName]->latestVersions->next_master} to be released, depending on " . ($count - 1) . " new:");
@@ -336,7 +332,8 @@ class Releaser
 
         $this->promptUserWhetherToProceed();
 
-        foreach ($this->toBeReleased as $repo) {
+        foreach ($this->toBeReleased as $repoName) {
+            $repo = $this->repos[$repoName];
             $this->createDotXBranch($repo);
             $this->addNewDepsToDotXComposerFile($repo);
             $this->pushDotXComposerFile($repo);
@@ -374,8 +371,8 @@ class Releaser
             }
             $newContent = base64_encode(json_encode($fileContent, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-            $this->fileHolder[$this->currentRepo][$filename]['content_copy'] = $fileData['content'];
-            $this->fileHolder[$this->currentRepo][$filename]['content']      = $newContent;
+            $this->fileHolder[$repoName][$filename]['content_copy'] = $fileData['content'];
+            $this->fileHolder[$repoName][$filename]['content']      = $newContent;
         }
     }
 
@@ -407,6 +404,10 @@ class Releaser
      */
     private function createDotXBranch(Repository $repo)
     {
+        if ($repo->hasBranch($repo->latestVersions->next_branch)) {
+            return false;
+        }
+
         $ref = $this->getSourceRefHead($repo->getName());
         if (isset($ref->object->sha)) {
             $sha = $ref->object->sha;
@@ -417,7 +418,7 @@ class Releaser
 
         $newRef = $repo->latestVersions->next_branch;
 
-        $this->createDotXRef($repo->getName(), $newRef, $sha);
+        return $this->createDotXRef($repo->getName(), $newRef, $sha);
     }
 
     /**
@@ -471,7 +472,6 @@ class Releaser
      */
     private function releaseDotXBranch(Repository $repo)
     {
-        $repoName   = $repo->getName();
         $dotXBranch = $repo->latestVersions->next_branch;
         $newTag     = $repo->latestVersions->next_master;
         $stats      = $repo->stats;
@@ -479,9 +479,10 @@ class Releaser
         $body = "`$newTag from $dotXBranch branch with {$stats['ahead']} commits`"
             . "\n\n[Releaser] (https://github.com/Gundars/releaser) @ " . date("l, M j Y G:i")
             . "\n\n### File changes:"
-            . implode('', $this->prependToEach("\n* ", $stats['files']))
-            . "\n\n### Commits:"
-            . implode('', $this->prependToEach("\n* ", $stats['commit_messages']));
+            . implode('', $this->prependToEach("\n* ", $stats['files']));
+            // todo: commit list takes up too much space
+            //. "\n\n### Commits:"
+            //. implode('', $this->prependToEach("\n* ", $stats['commit_messages']));
 
         $releaseData = [
             'tag_name'         => $newTag,

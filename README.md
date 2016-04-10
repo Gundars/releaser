@@ -70,5 +70,5 @@ Proper interface coming soon
 * finish grouping OOP for Gods sake
 * check if composer file sha is fine before file updates, get sha from branch where DotX is done, or DotX itself
 * support pre-releases
-* fix composer sha after release, delete main release (leave dotX br), re-release
+* fix composer sha after release, delete main release (leave dotX br), re-release (if dotX branch exists, get composer from that after determed release there is required)
 * DI needs fixing ASAP
