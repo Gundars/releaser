@@ -60,13 +60,16 @@ class Repository
 
     public $latestVersions = [];
 
-    public $stats = [];
+    public $stats = [
+        'ahead'           => 0,
+        'files'           => [],
+        'commit_messages' => []
+    ];
 
     /**
      * @var array of all tags,branches and releases ordered by date desc
      */
     private $refs = [];
-
 
     public function __construct($githubApiClient, $name)
     {
@@ -529,5 +532,14 @@ class Repository
         echo "\t" . implode("\n\t", $result);
 
         die;
+    }
+
+    /**
+     * @param $branch
+     * @return bool
+     */
+    public function hasBranch($branch)
+    {
+        return (array_key_exists($branch, $this->branches));
     }
 }
