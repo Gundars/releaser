@@ -38,6 +38,11 @@ composer require gundars/releaser 0.*
 ```php
 $releaser = new \Releaser\Releaser('$token', '$owner');
 $releaser->release($repository, $commonDepName, $type, $sourceRef);
+
+#for example, this repo is released using:
+$releaser = new \Releaser\Releaser('55b48e382257a...', 'gundars');
+$releaser->release('releaser', 'gundars', 'minor', 'dev-master');
+
 ```
 
 ####Arguments:
