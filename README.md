@@ -12,7 +12,7 @@
                ''``
 ```
 
-Releaser is an automated semantic release version manager for CLI and PHP applications
+Releaser is an automated semantic release version manager for PHP applications
 
 It is intended to save time on individuals and companies  - release all your repositories in a minute!
 
