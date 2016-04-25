@@ -72,6 +72,4 @@ Proper interface coming soon
 * replace err and msg with proper 7 tier logger interface
 * replace internal errors with exceptions
 * finish grouping OOP for Gods sake
-* check if composer file sha is fine before file updates, get sha from branch where DotX is done, or DotX itself
-* fix composer sha after release, delete main release (leave dotX br), re-release (if dotX branch exists, get composer from that after determed release there is required)
 * DI needs fixing ASAP

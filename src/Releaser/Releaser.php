@@ -204,7 +204,7 @@ class Releaser
         $versionRefName = $repository->cToGVersion($githubVersion);
 
         $composerJson = $this->getFileFromGithub($parentName, $versionRefName, 'composer.json');
-        $composerInfo = json_decode($composerJson, true);
+        $composerInfo = json_decode(base64_decode($composerJson), true);
 
         if (!isset($composerInfo['require']) || empty($composerInfo['require'])) {
             $this->repos[$parentName]->setDependencies([]);
@@ -340,8 +340,9 @@ class Releaser
             return false;
         }
 
-        $fileData    = $this->fileHolder[$repoName][$filename];
-        $fileContent = json_decode(base64_decode($fileData['content']), true);
+        //$fileData    = $this->fileHolder[$repoName][$filename];
+        $fileData = $this->getFileFromGithub($repoName, $repo->nextDotXBranch(), 'composer.json');
+        $fileContent = json_decode(base64_decode($fileData), true);
         if (isset($fileContent['require']) && !empty($fileContent['require'])) {
             foreach ($fileContent['require'] as $depName => $depVersion) {
                 $depGName = $this->composerToGithubRepoName($depName);
@@ -356,7 +357,7 @@ class Releaser
             }
             $newContent = base64_encode(json_encode($fileContent, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-            $this->fileHolder[$repoName][$filename]['content_copy'] = $fileData['content'];
+            $this->fileHolder[$repoName][$filename]['content_copy'] = $fileContent;
             $this->fileHolder[$repoName][$filename]['content']      = $newContent;
         }
     }
@@ -440,7 +441,7 @@ class Releaser
             'ref'     => $sourceRef
         ];
 
-        return base64_decode($response->content);
+        return $response->content;
     }
 
     /**
