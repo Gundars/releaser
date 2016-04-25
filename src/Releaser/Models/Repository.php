@@ -15,11 +15,19 @@ use UnexpectedValueException;
  */
 class Repository
 {
-
+    /**
+     * @var
+     */
     private $githubApiClient;
 
+    /**
+     * @var VersionParser
+     */
     private $versionParser;
 
+    /**
+     * @var Semver
+     */
     private $semver;
 
     /**
@@ -50,26 +58,44 @@ class Repository
      */
     private $needsRelease;
 
+    /**
+     * @var
+     */
     private $tags;
 
+    /**
+     * @var
+     */
     private $branches;
 
+    /**
+     * @var
+     */
     private $releases;
 
+    /**
+     * @var array of all tags,branches and releases ordered by date desc
+     */
     private $tagsReleasesBranches;
 
+    /**
+     * @var array
+     */
     public $latestVersions = [];
 
+    /**
+     * @var
+     */
+    private $nextVersion;
+
+    /**
+     * @var array
+     */
     public $stats = [
         'ahead'           => 0,
         'files'           => [],
         'commit_messages' => []
     ];
-
-    /**
-     * @var array of all tags,branches and releases ordered by date desc
-     */
-    private $refs = [];
 
     public function __construct($githubApiClient, $name)
     {
@@ -210,7 +236,7 @@ class Repository
     }
 
     /**
-     * todo: just download the whole repo locally
+     *
      */
     private function collectRefs()
     {
@@ -281,7 +307,7 @@ class Repository
      */
     private function getLatestVersions()
     {
-        $this->latestVersions = new \stdClass();
+        $this->latestVersions = new \stdClass(); //todo
 
         $latestVersion = $this->tagsReleasesBranches[0];
 
@@ -298,12 +324,11 @@ class Repository
 
         $p3 = $this->getLatestPatchVersion("$m1.$m2.");
 
-        $this->latestVersions->current_master = "$m1.$m2.$m3";
+        $this->latestVersions->current_master = "$m1.$m2.0";
         $this->latestVersions->current_major  = false;
         $this->latestVersions->current_minor  = false;
         $this->latestVersions->current_patch  = ($p3 > 0 ? "$m1.$m2.$p3" : null);
         $this->latestVersions->next_branch    = "$m1." . ($m2 + 1) . ".x";
-        $this->latestVersions->next_master    = "$m1." . ($m2 + 1) . ".0";//todo remove
         $this->latestVersions->next_major     = ($m1 + 1) . ".0.0";
         $this->latestVersions->next_minor     = "$m1." . ($m2 + 1) . ".0";
         $this->latestVersions->next_patch     = "$m1.$m2." . ($p3 + 1);
@@ -315,6 +340,45 @@ class Repository
         );
     }
 
+    /**
+     * @param $type string - minor, major, patch
+     */
+    public function nextVersion($type)
+    {
+        switch ($type)
+        {
+            case 'major':
+                $version = $this->latestVersions->next_major;
+                break;
+            case 'minor':
+                $version = $this->latestVersions->next_minor;
+                break;
+            case 'patch':
+                $version = $this->latestVersions->next_patch;
+                break;
+            default:
+                $version = '0.1.0';
+        }
+
+        $this->nextVersion = $version;
+
+        return $version;
+    }
+
+    /**
+     * @return string
+     */
+    public function nextDotXBranch()
+    {
+        $vSplit = explode('.', $this->nextVersion);
+
+        return "{$vSplit[0]}.{$vSplit[1]}.x";
+    }
+
+    /**
+     * @param $releaseBeginning
+     * @return int
+     */
     private function getLatestPatchVersion($releaseBeginning)
     {
         $patchVersions = [];
@@ -364,16 +428,9 @@ class Repository
     }
 
     /**
-     * @return mixed
+     * @param $version
+     * @return bool
      */
-    private function curlGetReleases()
-    {
-        $path     = "repos/$this->owner/$this->currentRepo/releases";
-        $releases = $this->executeCurlRequest($path);
-
-        return $releases;
-    }
-
     public function cToGVersion($version)
     {
         if (!$this->versionExistsInGit($version)) {
@@ -383,6 +440,10 @@ class Repository
         return $version;
     }
 
+    /**
+     * @param $version
+     * @return bool
+     */
     private function versionExistsInGit($version)
     {
         return in_array($version, $this->tagsReleasesBranches);

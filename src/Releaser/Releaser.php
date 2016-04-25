@@ -3,7 +3,6 @@
 namespace Releaser;
 
 use Releaser\Models\Repository;
-use Releaser\Models\Version;
 use Releaser\Models\GithubAPIClient;
 
 require __DIR__ . '/../../vendor/autoload.php';
@@ -15,26 +14,14 @@ require __DIR__ . '/../../vendor/autoload.php';
  */
 class Releaser
 {
-
-    /**
-     * @var Version
-     */
-    private $version;
-
-    /**
-     * @var Repository
-     */
-    private $repository;
+    CONST MODE_INTERACTIVE    = 'interactve';
+    CONST MODE_SANDBOX        = 'sandbox';
+    CONST MODE_NONINTERACTIVE = 'noninteractive';
 
     /**
      * @var GithubAPIClient
      */
     private $githubApiCLient;
-
-    /**
-     * @var string - Github API token
-     */
-    private $githubApiToken;
 
     /**
      * @var string - name of the github repo owner that is being released
@@ -77,30 +64,15 @@ class Releaser
     private $fileHolder;
 
     /**
-     * @var array - Composer to Github repository  names
+     * @var
      */
-    private $repoNamesComposerToGH;
-
-    /**
-     * @var array - Github to Composer repository  names
-     */
-    private $repoNamesGHToComposer;
-
-    /**
-     * @var array - Composer to Github dep version names
-     */
-    private $repoVersionsComposerToGH;
-
-    /**
-     * @var array - Github to Composer dep verison names
-     */
-    private $repoVersionsGHToComposer;
+    private $mode;
 
     /**
      * Releaser constructor.
+     *
      * @param string $token Github API token
      * @param string $owner Github owner name of repository to release
-     *
      */
     public function __construct($token, $owner)
     {
@@ -116,18 +88,22 @@ class Releaser
      * @param string $commonDepName All dependencies with this somewhere in their name will be released, can be same as repo name
      * @param string $type          major, minor, patch. See below
      * @param string $sourceRef     Branch name OR version to release (f.e. master or 1.2.0)
-     *
-     * types: major: master branch -> create 1.0.x branch -> do 1.0.0 release
-     *        minor: master branch -> create 1.1.x branch -> do 1.1.0 release
-     *        patch:         create or reuse 1.1.x branch -> do 1.1.1 release
-     *
+     *                              types: major: master branch -> create 1.0.x branch -> do 1.0.0 release
+     *                              minor: master branch -> create 1.1.x branch -> do 1.1.0 release
+     *                              patch:         create or reuse 1.1.x branch -> do 1.1.1 release
      */
-    public function release($repository, $commonDepName, $type = 'minor', $sourceRef = 'master')
-    {
+    public function release(
+        $repository,
+        $commonDepName,
+        $type = 'minor',
+        $sourceRef = 'master',
+        $mode = 'interactive'
+    ) {
         $this->mainRepoName  = $repository;
+        $this->commonDepName = $commonDepName;
         $this->type          = $type;
         $this->sourceRef     = $sourceRef;
-        $this->commonDepName = $commonDepName;
+        $this->mode          = $mode;
 
         $this->repos[$this->mainRepoName] = new Repository($this->githubApiCLient, $this->mainRepoName);
         $this->repos[$this->mainRepoName]->addRequiredVersion($sourceRef);
@@ -248,7 +224,7 @@ class Releaser
                 } else {
                     $this->repos[$depName] = new Repository($this->githubApiCLient, $depName);
                     $this->repos[$depName]->setComposerName($depCompName)
-                        ->addRequiredVersion($depCompVersion, $repository->getName());
+                                          ->addRequiredVersion($depCompVersion, $repository->getName());
                 }
 
                 if ($this->repos[$depName]->getDependencies() === false) {
@@ -278,7 +254,6 @@ class Releaser
 
     /**
      * While there are repos with unaccounted dependencies, loop through and add them
-     *
      * Verify no more deps need to be released for about to be released repositories
      * Even if no code change is need, repos that have dependency change needs new release
      */
@@ -323,14 +298,25 @@ class Releaser
             die;
         }
 
-        $this->msg("New $this->mainRepoName {$this->repos[$this->mainRepoName]->latestVersions->next_master} to be released, depending on " . ($count - 1) . " new:");
+        $this->msg(
+            "New $this->mainRepoName {$this->repos[$this->mainRepoName]->nextVersion($this->type)} to be released, depending on "
+            . ($count - 1)
+            . " new:"
+        );
         foreach ($this->toBeReleased as $repo) {
             if ($repo !== $this->mainRepoName) {
-                $this->msg('- ' . $this->repos[$repo]->latestVersions->next_master . ' ' . $repo);
+                $this->msg('- ' . $this->repos[$repo]->nextVersion($this->type) . ' ' . $repo);
             }
         }
 
-        $this->promptUserWhetherToProceed();
+        if ($this->mode === static::MODE_NONINTERACTIVE) {
+            $this->msg("Auto releasing packages in {$this->mode} mode");
+        } elseif ($this->mode === static::MODE_SANDBOX) {
+            $this->msg("Aborting due to {$this->mode} mode");
+            return false;
+        } else {
+            $this->promptUserWhetherToProceed();
+        }
 
         foreach ($this->toBeReleased as $repoName) {
             $repo = $this->repos[$repoName];
@@ -363,8 +349,7 @@ class Releaser
                     continue;
                 }
                 if (in_array($depGName, $this->toBeReleased)) {
-                    //todo: currently hardcoded to master
-                    $changeDepVerTo                   = $this->repos[$depGName]->latestVersions->next_master;
+                    $changeDepVerTo                   = $this->repos[$depGName]->nextVersion($this->type);
                     $fileContent['require'][$depName] = $changeDepVerTo;
                     $this->msg($repo->getName() . " $filename changed dep $depName to $changeDepVerTo");
                 }
@@ -386,7 +371,7 @@ class Releaser
             'message' => 'Releaser changed composer.json dependencies',
             'content' => $this->fileHolder[$repoName][$filename]['content'],
             'sha'     => $this->fileHolder[$repoName][$filename]['sha'],
-            'branch'  => $this->repos[$repoName]->latestVersions->next_branch
+            'branch'  => $this->repos[$repoName]->nextDotXBranch()
         ];
 
         $result = $this->githubApiCLient->updateFile($repoName, $filename, $releaseData);
@@ -404,7 +389,7 @@ class Releaser
      */
     private function createDotXBranch(Repository $repo)
     {
-        if ($repo->hasBranch($repo->latestVersions->next_branch)) {
+        if ($repo->hasBranch($repo->nextDotXBranch())) {
             return false;
         }
 
@@ -416,7 +401,7 @@ class Releaser
             $this->err("Failed to obtain stable branch last commit sha hash");
         }
 
-        $newRef = $repo->latestVersions->next_branch;
+        $newRef = $repo->nextDotXBranch();
 
         return $this->createDotXRef($repo->getName(), $newRef, $sha);
     }
@@ -472,17 +457,14 @@ class Releaser
      */
     private function releaseDotXBranch(Repository $repo)
     {
-        $dotXBranch = $repo->latestVersions->next_branch;
-        $newTag     = $repo->latestVersions->next_master;
+        $dotXBranch = $repo->nextDotXBranch();
+        $newTag     = $repo->nextVersion($this->type);
         $stats      = $repo->stats;
 
         $body = "`$newTag from $dotXBranch branch with {$stats['ahead']} commits`"
-            . "\n\n[Releaser] (https://github.com/Gundars/releaser) @ " . date("l, M j Y G:i")
-            . "\n\n### File changes:"
-            . implode('', $this->prependToEach("\n* ", $stats['files']));
-            // todo: commit list takes up too much space
-            //. "\n\n### Commits:"
-            //. implode('', $this->prependToEach("\n* ", $stats['commit_messages']));
+                . "\n\n[Releaser] (https://github.com/Gundars/releaser) @ " . date("l, M j Y G:i")
+                . "\n\n### File changes:"
+                . implode('', $this->prependToEach("\n* ", $stats['files']));
 
         $releaseData = [
             'tag_name'         => $newTag,
