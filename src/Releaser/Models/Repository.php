@@ -8,7 +8,6 @@ use UnexpectedValueException;
 
 /**
  * Class Repository
- *
  * Responsible for all Github repository data and logic required for a release
  *
  * @package Releaser\M`odels
@@ -217,7 +216,6 @@ class Repository
 
     /**
      * Calculate this dep. version used last time main repo repo was released
-     *
      * Can be a branch / tag / release / whatever composer supports when you read this
      */
     public function calculateLatestRequiredVersion()
@@ -285,21 +283,23 @@ class Repository
     /**
      * @return bool|void
      */
-    public function needsARelease()
+    public function needsARelease($type)
     {
-        return (bool)(is_bool($this->needsRelease)) ? $this->needsRelease : $this->verifyRepositoryNeedsToBeReleased();
+        return (bool) (is_bool($this->needsRelease)) ? $this->needsRelease : $this->verifyRepositoryNeedsToBeReleased(
+            $type
+        );
     }
 
     /**
      * todo:
      * when receiving branch or major version - compare to latest version
      * when receiving patch - version - compare to dotx branch
+     *
      * @param string $refRelease
      */
-    private function verifyRepositoryNeedsToBeReleased($refRelease = '')
+    private function verifyRepositoryNeedsToBeReleased($type)
     {
-        // todo find out if custom branch / tag needs a release! not just hardcode to current_master
-        return $this->branchNeedsANewRelease($this->getRequiredVersions()[0], $this->latestVersions->current_master);
+        return $this->branchNeedsANewRelease($this->getRequiredVersions()[0], $this->currentVersion($type));
     }
 
     /**
@@ -325,8 +325,8 @@ class Repository
         $p3 = $this->getLatestPatchVersion("$m1.$m2.");
 
         $this->latestVersions->current_master = "$m1.$m2.0";
-        $this->latestVersions->current_major  = false;
-        $this->latestVersions->current_minor  = false;
+        $this->latestVersions->current_major  = "$m1.0.0";
+        $this->latestVersions->current_minor  = "$m1.$m2.0";
         $this->latestVersions->current_patch  = ($p3 > 0 ? "$m1.$m2.$p3" : null);
         $this->latestVersions->next_branch    = "$m1." . ($m2 + 1) . ".x";
         $this->latestVersions->next_major     = ($m1 + 1) . ".0.0";
@@ -336,8 +336,29 @@ class Repository
         $this->msg(
             $this->getName() . " latest master release {$this->latestVersions->current_master}, "
             . ($this->latestVersions->current_patch ? 'patched with '
-                . $this->latestVersions->current_patch : 'not patched')
+                                                      . $this->latestVersions->current_patch : 'not patched')
         );
+    }
+
+    private function currentVersion($type)
+    {
+        switch ($type) {
+            case 'major':
+                $version = $this->latestVersions->current_major;
+                break;
+            case 'minor':
+                $version = $this->latestVersions->current_minor;
+                break;
+            case 'patch':
+                $version = ($this->latestVersions->current_patch) ? $this->latestVersions->current_patch : $this->latestVersions->current_minor;
+                break;
+            default:
+                $version = '0.1.0';
+        }
+
+        $this->nextVersion = $version;
+
+        return $version;
     }
 
     /**
@@ -345,8 +366,7 @@ class Repository
      */
     public function nextVersion($type)
     {
-        switch ($type)
-        {
+        switch ($type) {
             case 'major':
                 $version = $this->latestVersions->next_major;
                 break;
@@ -390,9 +410,8 @@ class Repository
             }
         }
 
-        return (!empty($patchVersions)) ? (int)max($patchVersions) : 0;
+        return (!empty($patchVersions)) ? (int) max($patchVersions) : 0;
     }
-
 
     /**
      * @param $branch
@@ -400,13 +419,18 @@ class Repository
      */
     private function branchNeedsANewRelease($branch, $releaseVersion)
     {
-        $comparison = $this->githubApiClient->curlRefAndReleaseComparison($this->getName(), $releaseVersion, $this->cToGVersion($branch));
+        $comparison = $this->githubApiClient->curlRefAndReleaseComparison(
+            $this->getName(),
+            $releaseVersion,
+            $this->cToGVersion($branch)
+        );
         $this->msg(
-            $this->getName() . " $branch branch VS $releaseVersion release - {$comparison->status}, ahead by {$comparison->ahead_by}, behind by {$comparison->behind_by} commits"
+            $this->getName()
+            . " $branch branch VS $releaseVersion release - {$comparison->status}, ahead by {$comparison->ahead_by}, behind by {$comparison->behind_by} commits"
         );
 
         // Save stats
-        $this->stats['ahead'] = (int)$comparison->ahead_by;
+        $this->stats['ahead'] = (int) $comparison->ahead_by;
         if (!empty($comparison->files)) {
             foreach ($comparison->files as $file) {
                 $this->stats['files'][] = "$file->status $file->filename -$file->deletions +$file->additions";
@@ -587,7 +611,10 @@ class Repository
         $result = [];
 
         for ($i = 0; $i < $length; $i++) {
-            $result[] = ($i + 1) . ')' . substr($trace[$i], strpos($trace[$i], ' ')); // replace '#someNum' with '$i)', set the right ordering
+            $result[] = ($i + 1) . ')' . substr(
+                    $trace[$i],
+                    strpos($trace[$i], ' ')
+                ); // replace '#someNum' with '$i)', set the right ordering
         }
 
         echo "\t" . implode("\n\t", $result);

@@ -244,7 +244,7 @@ class Releaser
         foreach ($this->repos as $repo) {
             $repo->calculateLatestRequiredVersion();
 
-            if ($repo->needsARelease()) {
+            if ($repo->needsARelease($this->type)) {
                 $this->toBeReleased[] = $repo->getName();
             }
         }
@@ -341,7 +341,7 @@ class Releaser
         }
 
         //$fileData    = $this->fileHolder[$repoName][$filename];
-        $fileData = $this->getFileFromGithub($repoName, $repo->nextDotXBranch(), 'composer.json');
+        $fileData    = $this->getFileFromGithub($repoName, $repo->nextDotXBranch(), 'composer.json');
         $fileContent = json_decode(base64_decode($fileData), true);
         if (isset($fileContent['require']) && !empty($fileContent['require'])) {
             foreach ($fileContent['require'] as $depName => $depVersion) {
