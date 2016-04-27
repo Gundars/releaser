@@ -41,7 +41,12 @@ class Releaser
     /**
      * @var string - all dependencies without this in their name will be ignored
      */
-    private $commonDepName;
+    private $whitelistDepCommonNames;
+
+    /**
+     * @var All dependencies with these strings in their name will be ignored
+     */
+    private $blacklistDepCommonNames;
 
     /**
      * @var string - repository being released
@@ -84,26 +89,29 @@ class Releaser
     /**
      * release repository and its dependencies
      *
-     * @param string $repository    Repository to release
-     * @param string $commonDepName All dependencies with this somewhere in their name will be released, can be same as repo name
-     * @param string $type          major, minor, patch. See below
-     * @param string $sourceRef     Branch name OR version to release (f.e. master or 1.2.0)
-     *                              types: major: master branch -> create 1.0.x branch -> do 1.0.0 release
-     *                              minor: master branch -> create 1.1.x branch -> do 1.1.0 release
-     *                              patch:         create or reuse 1.1.x branch -> do 1.1.1 release
+     * @param string $repository                     Repository to release
+     * @param string $whitelistDepCommonNames        All dependencies with these strings somewhere in their name will be released, can be same as repo name
+     * @param string $blacklistDepCommonNames        All dependencies with these strings in their name will be ignored
+     * @param string $type                           major, minor, patch. See below
+     * @param string $sourceRef                      Branch name OR version to release (f.e. master or 1.2.0)
+     *                                               types: major: master branch -> create 1.0.x branch -> do 1.0.0 release
+     *                                               minor: master branch -> create 1.1.x branch -> do 1.1.0 release
+     *                                               patch:         create or reuse 1.1.x branch -> do 1.1.1 release
      */
     public function release(
         $repository,
-        $commonDepName,
+        $whitelistDepCommonNames,
+        $blacklistDepCommonNames,
         $type = 'minor',
         $sourceRef = 'master',
         $mode = 'interactive'
     ) {
-        $this->mainRepoName  = $repository;
-        $this->commonDepName = $commonDepName;
-        $this->type          = $type;
-        $this->sourceRef     = $sourceRef;
-        $this->mode          = $mode;
+        $this->mainRepoName            = $repository;
+        $this->whitelistDepCommonNames = $whitelistDepCommonNames;
+        $this->blacklistDepCommonNames = $blacklistDepCommonNames;
+        $this->type                    = $type;
+        $this->sourceRef               = $sourceRef;
+        $this->mode                    = $mode;
 
         $this->repos[$this->mainRepoName] = new Repository($this->githubApiCLient, $this->mainRepoName);
         $this->repos[$this->mainRepoName]->addRequiredVersion($sourceRef);
@@ -215,7 +223,9 @@ class Releaser
 
         foreach ($composerInfo['require'] as $depCompName => $depCompVersion) {
             // each dep that matches naming pattern
-            if (strpos($depCompName, $this->commonDepName) !== false) {
+
+            if ($this->strposInArray($depCompName, $this->whitelistDepCommonNames)
+                && !$this->strposInArray($depCompName, $this->blacklistDepCommonNames)) {
                 $depName = $this->composerToGithubRepoName($depCompName);
                 $repository->addDependency($depName);
 
@@ -234,6 +244,21 @@ class Releaser
         }
 
         return $newDependencies;
+    }
+
+    /**
+     * @param string $needle
+     * @param array  $haystack
+     */
+    private function strposInArray($needle, array $haystack)
+    {
+        foreach ($haystack as $item) {
+            if (strpos($needle, $item) !== false) {
+               return true;
+            }
+        }
+
+        return false;
     }
 
     /**
