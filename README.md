@@ -37,11 +37,11 @@ composer require gundars/releaser 0.*
 ###Releasing a repository via PHP
 ```php
 $releaser = new \Releaser\Releaser('$token', '$owner');
-$releaser->release($repository, $commonDepName, $type, $sourceRef, $mode);
+$releaser->release($repository, $whitelistDepCommonNames, $blacklistDepCommonNames $type, $sourceRef, $mode);
 
 #for example, this repo is released using:
 $releaser = new \Releaser\Releaser('55b48e382257a...', 'gundars');
-$releaser->release('releaser', 'gundars', 'minor', 'dev-master', 'sandbox');
+$releaser->release('releaser', 'gundars', [], 'minor', 'dev-master', 'sandbox');
 
 ```
 
