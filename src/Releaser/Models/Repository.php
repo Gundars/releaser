@@ -572,7 +572,17 @@ class Repository
      */
     private function multipleAbstractVersionsToGitRef($versions)
     {
+        foreach ($versions as $key => $version) {
+            if ($version === '*') {
+                unset($versions[$key]);
+            }
+        }
 
+        if (count($versions) === 1) {
+            return array_pop($versions);
+        }
+        
+        var_dump($this->getVersionRequirees());
         //should  construct array of ALL matching versions
         // and get latest ref in all deps
         var_dump($this->getName());
