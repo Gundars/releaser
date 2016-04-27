@@ -52,7 +52,7 @@ $releaser->release('releaser', 'gundars', 'minor', 'dev-master', 'sandbox');
 | `$token`         |'a0bc9q42g3f4asd'  | Github API token                                            |
 | `$owner`         |'github-account'   | Name of the github repo owner that is being released        |
 | `$repository`    | 'reponame'        | Name of the github repository that is being released       |
-| `$whitelistDepCommonNames` | ['goodrepoprefix']          | All dependencies with this in their name wil lbe released, can be same as owner or empty `$owner` |
+| `$whitelistDepCommonNames` | ['goodrepoprefix']          | All dependencies with this in their name wil lbe released, can be same as `$owner` or empty  |
 | `$blacklistDepCommonNames` | ['badrepoprefix']        | All dependencies with these strings in their name will be ignored, [] by default |
 | `$type`          | 'major'           | Type of release (major 1.0.0, minor 1.1.0 (default), patch 1.1.1)                       |
 | `$sourceRef`     | 'master'          | Source repository release base - tag, branch, or release. Default - master   |
