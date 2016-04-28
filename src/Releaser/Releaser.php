@@ -5,7 +5,9 @@ namespace Releaser;
 use Releaser\Models\Repository;
 use Releaser\Models\GithubAPIClient;
 
-require __DIR__ . '/../../vendor/autoload.php';
+if (is_file(__DIR__ . '/../../vendor/autoload.php')) {
+    require __DIR__ . '/../../vendor/autoload.php';
+}
 
 /**
  * Class Releaser\Releaser
@@ -252,6 +254,10 @@ class Releaser
      */
     private function strposInArray($needle, array $haystack)
     {
+        if (empty($haystack)) {
+            return false;
+        }
+
         foreach ($haystack as $item) {
             if (strpos($needle, $item) !== false) {
                 return true;

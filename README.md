@@ -37,11 +37,11 @@ composer require gundars/releaser 0.*
 ###Releasing a repository via PHP
 ```php
 $releaser = new \Releaser\Releaser('$token', '$owner');
-$releaser->release($repository, $commonDepName, $type, $sourceRef, $mode);
+$releaser->release($repository, $whitelistDepCommonNames, $blacklistDepCommonNames $type, $sourceRef, $mode);
 
 #for example, this repo is released using:
 $releaser = new \Releaser\Releaser('55b48e382257a...', 'gundars');
-$releaser->release('releaser', 'gundars', 'minor', 'dev-master', 'sandbox');
+$releaser->release('releaser', 'gundars', [], 'minor', 'dev-master', 'sandbox');
 
 ```
 
@@ -59,17 +59,14 @@ $releaser->release('releaser', 'gundars', 'minor', 'dev-master', 'sandbox');
 | `$mode`          | 'interactive'     | 'interactive' - ask for input, then release (default), 'sandbox' - show what would be released, 'noninteractive' - release without prompting user confirmation |
 
 
-###Releasing a repository via CLI
-```php
-Execute `php sample/release.php` making sure parameters are defined in sample/release.php
-Proper interface coming soon
-```
+###Releasing a repository via CLI or web
+To run via bash, execute `./cli/run.sh`, define params there
+To run via browser, execute `php ./cli/release.php` using cli args or $_GET or $_POST parameters
+
 
 ###Currently known issues, unimplemented features, garbage
-* add command line support
 * option to force release on unchanged repos for stability
 * option to release require-dev dependencies
-* change $commonDepName to array of trigger names
 * replace err and msg with proper 7 tier logger interface
 * replace internal errors with exceptions
 * finish grouping OOP for Gods sake
