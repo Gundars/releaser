@@ -153,10 +153,8 @@ class GithubAPIClient
         } elseif (is_object($body)) {
             return $body;
         } else {
-            $this->msg('Unable to parse github response');
             var_dump($body);
-            die;
-        }
+            $this->err('Unable to parse github response');
 
         // really weird yet short recursive git API paginator
         if (array_key_exists('Link', $headers)) {
@@ -222,10 +220,10 @@ class GithubAPIClient
     /**
      * @param string $message
      */
-    private function err($message)
+    private function err($message, $exitCode = 1)
     {
         echo "Error: $message \nABORTING!";
-        exit;
+        exit($exitCode);
     }
 
     private function bye($message)
@@ -242,10 +240,12 @@ class GithubAPIClient
         $result = [];
 
         for ($i = 0; $i < $length; $i++) {
-            $result[] = ($i + 1) . ')' . substr($trace[$i], strpos($trace[$i], ' '));
+            $result[] = ($i + 1) . ')' . substr(
+                    $trace[$i],
+                    strpos($trace[$i], ' ')
+                ); // replace '#someNum' with '$i)', set the right ordering
         }
 
-        echo "\t" . implode("\n\t", $result);
-        die;
+        $this->err("\t" . implode("\n\t", $result));
     }
 }
