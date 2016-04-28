@@ -223,7 +223,7 @@ class Repository
         $versions = $this->getRequiredVersions();
         $count    = count($versions);
         if ($count <= 0) {//previous calculation must have had a bug
-            die("ERROR: miscalc, " . $this->getName() . " 0 versions are required by others. Aborting!");
+            $this->err("ERROR: miscalc, " . $this->getName() . " 0 versions are required by others. Aborting!");
         } elseif ($count === 1) {//single version required :)
             $latestRequiredVersion = $this->abstractVersionToGitRef($versions[0]);
         } else { // required multiple versions :(
@@ -581,13 +581,13 @@ class Repository
         if (count($versions) === 1) {
             return array_pop($versions);
         }
-        
+
         var_dump($this->getVersionRequirees());
         //should  construct array of ALL matching versions
         // and get latest ref in all deps
         var_dump($this->getName());
         var_dump($versions);
-        die('NOT IMPLEMENTED!');
+        $this->err('MULTIPLE LEVELS NOT IMPLEMENTED!');
     }
 
     /**
@@ -601,10 +601,10 @@ class Repository
     /**
      * @param string $message
      */
-    private function err($message)
+    private function err($message, $exitCode = 1)
     {
         echo "Error: $message \nABORTING!";
-        exit;
+        exit($exitCode);
     }
 
     private function bye($message)
@@ -627,9 +627,7 @@ class Repository
                 ); // replace '#someNum' with '$i)', set the right ordering
         }
 
-        echo "\t" . implode("\n\t", $result);
-
-        die;
+        $this->err("\t" . implode("\n\t", $result));
     }
 
     /**

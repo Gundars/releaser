@@ -59,17 +59,14 @@ $releaser->release('releaser', 'gundars', [], 'minor', 'dev-master', 'sandbox');
 | `$mode`          | 'interactive'     | 'interactive' - ask for input, then release (default), 'sandbox' - show what would be released, 'noninteractive' - release without prompting user confirmation |
 
 
-###Releasing a repository via CLI
-```php
-Execute `php sample/release.php` making sure parameters are defined in sample/release.php
-Proper interface coming soon
-```
+###Releasing a repository via CLI or web
+To run via bash, execute `./cli/run.sh`, define params there
+To run via browser, execute `php ./cli/release.php` using cli args or $_GET or $_POST parameters
+
 
 ###Currently known issues, unimplemented features, garbage
-* add command line support
 * option to force release on unchanged repos for stability
 * option to release require-dev dependencies
-* change $commonDepName to array of trigger names
 * replace err and msg with proper 7 tier logger interface
 * replace internal errors with exceptions
 * finish grouping OOP for Gods sake
