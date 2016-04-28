@@ -188,7 +188,6 @@ class Releaser
                 var_dump('SOLVED: ', $releaseOrder);
                 var_dump('UNSOLVED:', $toRelease);
                 $this->err("\nTurning on the other brain failed, nothing is released, Releaser is shutting down :/");
-                die;
             }
             $level++;
         } while (!empty($toRelease));
@@ -225,7 +224,8 @@ class Releaser
             // each dep that matches naming pattern
 
             if ($this->strposInArray($depCompName, $this->whitelistDepCommonNames)
-                && !$this->strposInArray($depCompName, $this->blacklistDepCommonNames)) {
+                && !$this->strposInArray($depCompName, $this->blacklistDepCommonNames)
+            ) {
                 $depName = $this->composerToGithubRepoName($depCompName);
                 $repository->addDependency($depName);
 
@@ -254,7 +254,7 @@ class Releaser
     {
         foreach ($haystack as $item) {
             if (strpos($needle, $item) !== false) {
-               return true;
+                return true;
             }
         }
 
@@ -529,10 +529,10 @@ class Releaser
     /**
      * @param string $message
      */
-    private function err($message)
+    private function err($message, $exitCode = 1)
     {
         echo "Error: $message \nABORTING!";
-        exit;
+        exit($exitCode);
     }
 
     /**
