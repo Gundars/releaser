@@ -155,6 +155,7 @@ class GithubAPIClient
         } else {
             var_dump($body);
             $this->err('Unable to parse github response');
+        }
 
         // really weird yet short recursive git API paginator
         if (array_key_exists('Link', $headers)) {
